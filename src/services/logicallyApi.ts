@@ -8,6 +8,7 @@ import type {
 	ChatMessage,
 	LogicallySettings,
 	PlanInfo,
+	Privilege,
 	UserInfo,
 	SearchMode,
 	SourceNode,
@@ -85,17 +86,20 @@ export class LogicallyApi {
 		return `${base}${endpoint}`;
 	}
 
-	private buildAuthHeaders(additional: Record<string, string> = {}): Record<string, string> {
+	private buildAuthHeaders(additional?: Record<string, string>): Record<string, string> {
 		return this.settings.userToken
 			? { 'x-access-token': this.settings.userToken, ...additional }
-			: additional;
+			: { ...additional };
 	}
 
-	private parseError(json: any, status: number): string {
+	private parseError(json: unknown, status: number): string {
 		if (!json) return `Request failed with status ${status}`;
 		if (typeof json === 'string') return json;
-		if (json.code) return json.code;
-		if (json.message) return json.message;
+		if (typeof json === 'object') {
+			const obj = json as Record<string, unknown>;
+			if (typeof obj.code === 'string') return obj.code;
+			if (typeof obj.message === 'string') return obj.message;
+		}
 		return `Request failed with status ${status}`;
 	}
 
@@ -113,19 +117,19 @@ export class LogicallyApi {
 		try {
 			const response = await requestUrl({
 				url: this.getUrl(endpoint),
-				method: options.method || 'GET',
+				method: options.method ?? 'GET',
 				headers: {
 					'Content-Type': 'application/json',
-					...this.buildAuthHeaders(options.headers as Record<string, string> | undefined),
+					...this.buildAuthHeaders(options.headers),
 				},
 				body: options.body,
 			});
 
 			if (response.status >= 200 && response.status < 300) {
-				return { success: true, data: response.json };
+				return { success: true, data: response.json as unknown as T };
 			}
 
-			const errorMessage = this.parseError(response.json, response.status);
+			const errorMessage = this.parseError(response.json as unknown, response.status);
 			return { success: false, error: errorMessage };
 		} catch (error) {
 			console.error('[Logically API] Request failed:', error);
@@ -161,17 +165,24 @@ export class LogicallyApi {
 			});
 
 			if (response.status >= 200 && response.status < 300) {
-				const data = response.json;
+				const data = response.json as Record<string, unknown>;
+				const token = (data.token ?? data.accessToken) as string | undefined;
+				const rawUser = data.user as { id?: string; email?: string; privileges?: Privilege[] } | undefined;
+				const user: UserInfo = {
+					id: rawUser?.id ?? '',
+					email: rawUser?.email ?? normalizedEmail,
+					privileges: rawUser?.privileges ?? [],
+				};
 				return {
 					success: true,
 					data: {
-						token: data.token || data.accessToken,
-						user: data.user || { id: '', email: normalizedEmail, privileges: [] },
+						token: token ?? '',
+						user,
 					},
 				};
 			}
 
-			const errorMessage = this.parseError(response.json, response.status);
+			const errorMessage = this.parseError(response.json as unknown, response.status);
 			return { success: false, error: errorMessage };
 		} catch (error) {
 			console.error('[Logically API] Login failed:', error);
@@ -200,22 +211,29 @@ export class LogicallyApi {
 			});
 
 			if (response.status >= 200 && response.status < 300) {
-				const data = response.json;
-				const token = data.token || data.accessToken;
+				const data = response.json as Record<string, unknown>;
+				const token = (data.token ?? data.accessToken) as string | undefined;
 				if (!token || token === 'null') {
 					return { success: false, error: 'No token received from server' };
 				}
+				const rawUser = data.user as { id?: string; email?: string; privileges?: Privilege[] } | undefined;
+				const email = (data.email as string | undefined) ?? '';
+				const user: UserInfo = {
+					id: rawUser?.id ?? '',
+					email: rawUser?.email ?? email,
+					privileges: rawUser?.privileges ?? [],
+				};
 				return {
 					success: true,
 					data: {
 						token,
-						user: data.user || { id: '', email: data.email || '', privileges: [] },
-						email: data.email || '',
+						user,
+						email,
 					},
 				};
 			}
 
-			const errorMessage = this.parseError(response.json, response.status);
+			const errorMessage = this.parseError(response.json as unknown, response.status);
 			return { success: false, error: errorMessage };
 		} catch (error) {
 			console.error('[Logically API] Google OAuth failed:', error);
@@ -345,9 +363,9 @@ export class LogicallyApi {
 						});
 						response.on('end', () => {
 							try {
-								const parsed = errorBody ? JSON.parse(errorBody) : null;
+								const parsed: unknown = errorBody ? JSON.parse(errorBody) : null;
 								handlers.onError(this.parseError(parsed, statusCode));
-							} catch (_e) {
+							} catch {
 								handlers.onError(this.parseError(errorBody || null, statusCode));
 							}
 							resolve();
@@ -402,10 +420,11 @@ export class LogicallyApi {
 			switch (key) {
 				case 'COMPLETION': {
 					try {
-						const parsed = JSON.parse(payload);
-						if (parsed.chunk) handlers.onChunk(parsed.chunk);
-						else handlers.onChunk(String(parsed));
-					} catch (_e) {
+						const parsed = JSON.parse(payload) as Record<string, unknown>;
+						const chunk = parsed.chunk;
+						if (typeof chunk === 'string') handlers.onChunk(chunk);
+						else handlers.onChunk(JSON.stringify(parsed));
+					} catch {
 						handlers.onChunk(payload);
 					}
 					break;
@@ -415,22 +434,23 @@ export class LogicallyApi {
 					// Extract source nodes from the nodes array.
 					if (handlers.onCitation) {
 						try {
-							const parsed = JSON.parse(payload);
-							if (parsed.nodes && Array.isArray(parsed.nodes)) {
-								const sources: SourceNode[] = parsed.nodes.map((n: Record<string, unknown>) => ({
+							const parsed = JSON.parse(payload) as Record<string, unknown>;
+							const nodes = parsed.nodes;
+							if (nodes && Array.isArray(nodes)) {
+								const sources: SourceNode[] = (nodes as Record<string, unknown>[]).map((n) => ({
 									fileid: n.fileid as string | undefined,
-									filename: (n.filename as string) || 'Unknown',
-									filetype: (n.filetype as string) || '',
+									filename: (n.filename as string) ?? 'Unknown',
+									filetype: (n.filetype as string) ?? '',
 									url: n.url as string | undefined,
 									pdfUrl: n.pdfUrl as string | undefined,
 									pages: n.pages as number[] | undefined,
 									content: n.content as string | undefined,
-									citationCount: (n.others as Record<string, unknown>)?.citation_count as number | undefined,
-									referenceCount: (n.others as Record<string, unknown>)?.reference_count as number | undefined,
+									citationCount: (n.others as Record<string, unknown> | undefined)?.citation_count as number | undefined,
+									referenceCount: (n.others as Record<string, unknown> | undefined)?.reference_count as number | undefined,
 								}));
 								handlers.onCitation(sources);
 							}
-						} catch (_e) {
+						} catch {
 							// Ignore parse errors for citation data
 						}
 					}
@@ -438,9 +458,11 @@ export class LogicallyApi {
 				}
 				case 'ERROR': {
 					try {
-						const parsed = JSON.parse(payload);
-						handlers.onError(parsed.code || parsed.message || 'Request failed');
-					} catch (_e) {
+						const parsed = JSON.parse(payload) as Record<string, unknown>;
+						const code = parsed.code;
+						const message = parsed.message;
+						handlers.onError((typeof code === 'string' ? code : null) ?? (typeof message === 'string' ? message : null) ?? 'Request failed');
+					} catch {
 						handlers.onError(payload || 'Request failed');
 					}
 					completed = true;
@@ -499,10 +521,11 @@ export class LogicallyApi {
 			switch (key) {
 				case 'COMPLETION': {
 					try {
-						const parsed = JSON.parse(payload);
-						if (parsed.chunk) handlers.onChunk(parsed.chunk);
-						else handlers.onChunk(String(parsed));
-					} catch (_e) {
+						const parsed = JSON.parse(payload) as Record<string, unknown>;
+						const chunk = parsed.chunk;
+						if (typeof chunk === 'string') handlers.onChunk(chunk);
+						else handlers.onChunk(JSON.stringify(parsed));
+					} catch {
 						handlers.onChunk(payload);
 					}
 					break;
@@ -511,22 +534,23 @@ export class LogicallyApi {
 					// Extract source nodes from the nodes array.
 					if (handlers.onCitation) {
 						try {
-							const parsed = JSON.parse(payload);
-							if (parsed.nodes && Array.isArray(parsed.nodes)) {
-								const sources: SourceNode[] = parsed.nodes.map((n: Record<string, unknown>) => ({
+							const parsed = JSON.parse(payload) as Record<string, unknown>;
+							const nodes = parsed.nodes;
+							if (nodes && Array.isArray(nodes)) {
+								const sources: SourceNode[] = (nodes as Record<string, unknown>[]).map((n) => ({
 									fileid: n.fileid as string | undefined,
-									filename: (n.filename as string) || 'Unknown',
-									filetype: (n.filetype as string) || '',
+									filename: (n.filename as string) ?? 'Unknown',
+									filetype: (n.filetype as string) ?? '',
 									url: n.url as string | undefined,
 									pdfUrl: n.pdfUrl as string | undefined,
 									pages: n.pages as number[] | undefined,
 									content: n.content as string | undefined,
-									citationCount: (n.others as Record<string, unknown>)?.citation_count as number | undefined,
-									referenceCount: (n.others as Record<string, unknown>)?.reference_count as number | undefined,
+									citationCount: (n.others as Record<string, unknown> | undefined)?.citation_count as number | undefined,
+									referenceCount: (n.others as Record<string, unknown> | undefined)?.reference_count as number | undefined,
 								}));
 								handlers.onCitation(sources);
 							}
-						} catch (_e) {
+						} catch {
 							// Ignore parse errors for citation data
 						}
 					}
@@ -534,9 +558,11 @@ export class LogicallyApi {
 				}
 				case 'ERROR': {
 					try {
-						const parsed = JSON.parse(payload);
-						handlers.onError(parsed.code || parsed.message || 'Request failed');
-					} catch (_e) {
+						const parsed = JSON.parse(payload) as Record<string, unknown>;
+						const code = parsed.code;
+						const message = parsed.message;
+						handlers.onError((typeof code === 'string' ? code : null) ?? (typeof message === 'string' ? message : null) ?? 'Request failed');
+					} catch {
 						handlers.onError(payload || 'Request failed');
 					}
 					completed = true;
@@ -612,15 +638,6 @@ export class LogicallyApi {
 	 */
 	logout(): void {
 		// Token clearing is handled by the settings
-	}
-}
-
-async function safeJson(response: Response): Promise<any> {
-	try {
-		return await response.json();
-	} catch (e) {
-		console.error('Failed to parse JSON response', e);
-		return null;
 	}
 }
 

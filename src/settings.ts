@@ -1,6 +1,6 @@
 import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
 import type { LogicallyPlugin, LogicallySettings, BaseModel } from './types';
-import { DEFAULT_SETTINGS, AI_MODELS, ModelCategory } from './types';
+import { DEFAULT_SETTINGS, AI_MODELS, ModelCategory, VIEW_TYPE_RESEARCH_ASSISTANT } from './types';
 import { IS_DEV_BUILD } from './utils/env';
 import { formatAuthError } from './utils/authErrors';
 
@@ -13,6 +13,18 @@ export class LogicallySettingTab extends PluginSettingTab {
 	private loginPassword = '';
 	private isLoggingIn = false;
 
+	private refreshResearchAssistantView(): void {
+		const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_RESEARCH_ASSISTANT);
+		for (const leaf of leaves) {
+			const viewUnknown: unknown = leaf.view;
+			if (!viewUnknown || typeof viewUnknown !== 'object') continue;
+			const maybeRefresh = (viewUnknown as { refresh?: unknown }).refresh;
+			if (typeof maybeRefresh === 'function') {
+				(viewUnknown as { refresh: () => void }).refresh();
+			}
+		}
+	}
+
 	constructor(app: App, plugin: LogicallyPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
@@ -23,16 +35,17 @@ export class LogicallySettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		// Header
-		containerEl.createEl('div', { cls: 'logically-settings-header' }, el => {
-			el.createEl('h2', { text: 'Logically Research Assistant' });
-			el.createEl('p', { 
-				text: 'Configure your connection to Logically for AI-powered research assistance.',
-				cls: 'setting-item-description'
-			});
+		new Setting(containerEl)
+			.setName('Research assistant')
+			.setHeading();
+
+		containerEl.createEl('p', {
+			text: 'Configure your connection for AI-powered research assistance.',
+			cls: 'setting-item-description',
 		});
 
 		// Account Section
-		containerEl.createEl('h3', { text: 'Account' });
+		new Setting(containerEl).setName('Account').setHeading();
 
 		if (this.plugin.settings.userToken) {
 			this.displayLoggedInState(containerEl);
@@ -42,7 +55,7 @@ export class LogicallySettingTab extends PluginSettingTab {
 
 		if (IS_DEV_BUILD) {
 			// API Configuration
-			containerEl.createEl('h3', { text: 'API Configuration' });
+			new Setting(containerEl).setName('API configuration').setHeading();
 
 			new Setting(containerEl)
 				.setName('API URL')
@@ -59,12 +72,12 @@ export class LogicallySettingTab extends PluginSettingTab {
 				});
 		}
 
-		// UI Configuration
-		containerEl.createEl('h3', { text: 'Interface' });
+		// UI configuration
+		new Setting(containerEl).setName('Interface').setHeading();
 
 		new Setting(containerEl)
 			.setName('Show ribbon icon')
-			.setDesc('Display the Logically icon in the left ribbon for quick access.')
+			.setDesc('Display the icon in the left ribbon for quick access.')
 			.addToggle(toggle => {
 				toggle
 					.setValue(this.plugin.settings.showRibbon)
@@ -75,8 +88,8 @@ export class LogicallySettingTab extends PluginSettingTab {
 					});
 			});
 
-		// Model Selection
-		containerEl.createEl('h3', { text: 'AI Model' });
+		// Model selection
+		new Setting(containerEl).setName('AI model').setHeading();
 		
 		new Setting(containerEl)
 			.setName('Default model')
@@ -88,21 +101,18 @@ export class LogicallySettingTab extends PluginSettingTab {
 				const reasoningModels = AI_MODELS.filter(m => m.category === ModelCategory.reasoning);
 
 				// Add standard models
-				dropdown.addOption('', '── Standard Models ──');
 				standardModels.forEach(model => {
 					const label = model.tag ? `${model.name} (${model.tag})` : model.name;
 					dropdown.addOption(model.id, label);
 				});
 
 				// Add advanced models
-				dropdown.addOption('', '── Advanced Models ──');
 				advancedModels.forEach(model => {
 					const label = model.tag ? `${model.name} (${model.tag})` : model.name;
 					dropdown.addOption(model.id, label);
 				});
 
 				// Add reasoning models
-				dropdown.addOption('', '── Reasoning Models ──');
 				reasoningModels.forEach(model => {
 					const label = model.tag ? `${model.name} (${model.tag})` : model.name;
 					dropdown.addOption(model.id, label);
@@ -127,19 +137,18 @@ export class LogicallySettingTab extends PluginSettingTab {
 			});
 		}
 
-		// Advanced Section
-		containerEl.createEl('h3', { text: 'Advanced' });
-		
+		// Advanced section
+		new Setting(containerEl).setName('Advanced').setHeading();
+
 		this.displayTokenLogin(containerEl);
 
-		// Footer
-		containerEl.createEl('div', { cls: 'logically-settings-footer' }, el => {
-			el.createEl('p', { text: 'Need help? Visit ' });
-			el.createEl('a', { 
-				text: 'logically.app', 
-				href: 'https://logically.app',
-			});
+		// Footer with link to documentation
+		const footerEl = containerEl.createEl('div', { cls: 'logically-settings-footer' });
+		const footerLink = footerEl.createEl('a', { 
+			href: 'https://logically.app',
 		});
+		footerLink.innerText = 'Documentation';
+		footerLink.setAttribute('target', '_blank');
 	}
 
 	private tokenInput = '';
@@ -149,8 +158,8 @@ export class LogicallySettingTab extends PluginSettingTab {
 		const tokenContainer = containerEl.createEl('div', { cls: 'logically-token-login' });
 
 		new Setting(tokenContainer)
-			.setName('Login with token')
-			.setDesc('Paste your user token directly to authenticate. Get your token from the Logically web app.')
+			.setName('Log in with token')
+			.setDesc('Paste your user token directly to authenticate. Get your token from the web app.')
 			.addText(text => {
 				text
 					.setPlaceholder('Paste your token here...')
@@ -159,13 +168,13 @@ export class LogicallySettingTab extends PluginSettingTab {
 						this.tokenInput = value;
 					});
 				text.inputEl.type = 'password';
-				text.inputEl.style.width = '100%';
+				text.inputEl.addClass('logically-token-input');
 			});
 
 		new Setting(tokenContainer)
 			.addButton(button => {
 				button
-					.setButtonText('Validate & Login')
+					.setButtonText('Validate & login')
 					.onClick(async () => {
 						if (!this.tokenInput.trim()) {
 							new Notice('Please enter a token');
@@ -179,6 +188,8 @@ export class LogicallySettingTab extends PluginSettingTab {
 
 						// Temporarily set the token to validate it
 						const oldToken = this.plugin.settings.userToken;
+						const oldEmail = this.plugin.settings.userEmail;
+						const oldPrivileges = this.plugin.settings.userPrivileges;
 						this.plugin.settings.userToken = this.tokenInput.trim();
 						this.plugin.api.updateSettings(this.plugin.settings);
 
@@ -190,26 +201,25 @@ export class LogicallySettingTab extends PluginSettingTab {
 							
 							this.plugin.settings.userEmail = result.data.email || '';
 							this.plugin.settings.userPrivileges = planResult.data?.privileges || result.data.privileges || [];
+							this.plugin.api.updateSettings(this.plugin.settings);
 							await this.plugin.saveSettings();
+							this.refreshResearchAssistantView();
 
-							// Refresh the research assistant view
-							if (this.plugin.researchAssistantView) {
-								this.plugin.researchAssistantView.refresh();
-							}
-
-							new Notice('✓ Token validated! You are now logged in.');
+							new Notice('Token validated. You are now logged in.');
 							this.tokenInput = '';
 							this.display();
 						} else {
-							// Token is invalid, restore the old token
+							// Token is invalid, restore the previous account context
 							this.plugin.settings.userToken = oldToken;
+							this.plugin.settings.userEmail = oldEmail;
+							this.plugin.settings.userPrivileges = oldPrivileges;
 							this.plugin.api.updateSettings(this.plugin.settings);
 							new Notice(`✗ Invalid token: ${result.error || 'Validation failed'}`);
 						}
 
 						this.isValidatingToken = false;
 						button.setDisabled(false);
-						button.setButtonText('Validate & Login');
+						button.setButtonText('Validate & log in');
 					});
 			});
 	}
@@ -217,10 +227,10 @@ export class LogicallySettingTab extends PluginSettingTab {
 	private displayLoggedInState(containerEl: HTMLElement): void {
 		new Setting(containerEl)
 			.setName('Logged in')
-			.setDesc('You are connected to Logically.')
+			.setDesc('You are connected.')
 			.addButton(button => {
 				button
-					.setButtonText('Logout')
+					.setButtonText('Log out')
 					.onClick(async () => {
 						this.plugin.settings.userToken = '';
 						this.plugin.settings.userPrivileges = [];
@@ -228,18 +238,15 @@ export class LogicallySettingTab extends PluginSettingTab {
 						this.plugin.settings.selectedModel = 'openai_gpt_5_mini';
 						this.plugin.api.logout();
 						await this.plugin.saveSettings();
-						// Refresh the research assistant view to show login prompt
-						if (this.plugin.researchAssistantView) {
-							this.plugin.researchAssistantView.refresh();
-						}
-						new Notice('Logged out from Logically');
+						this.refreshResearchAssistantView();
+						new Notice('Logged out successfully');
 						this.display();
 					});
 			});
 
 		new Setting(containerEl)
 			.setName('Verify connection')
-			.setDesc('Test your connection to the Logically API.')
+			.setDesc('Test your connection to the API.')
 			.addButton(button => {
 				button
 					.setButtonText('Test')
@@ -249,9 +256,9 @@ export class LogicallySettingTab extends PluginSettingTab {
 						button.setDisabled(false);
 						
 						if (result.success) {
-							new Notice('✓ Connection successful!');
+							new Notice('Connection successful');
 						} else {
-							new Notice(`✗ Connection failed: ${result.error}`);
+							new Notice(`Connection failed: ${result.error}`);
 						}
 					});
 			});
@@ -264,7 +271,6 @@ export class LogicallySettingTab extends PluginSettingTab {
 			.setName('Email')
 			.addText(text => {
 				text
-					.setPlaceholder('your@email.com')
 					.setValue(this.loginEmail)
 					.onChange(value => {
 						this.loginEmail = value;
@@ -287,7 +293,7 @@ export class LogicallySettingTab extends PluginSettingTab {
 		new Setting(loginContainer)
 			.addButton(button => {
 				button
-					.setButtonText('Login')
+					.setButtonText('Log in')
 					.setCta()
 					.onClick(async () => {
 						if (!this.loginEmail || !this.loginPassword) {
@@ -301,27 +307,27 @@ export class LogicallySettingTab extends PluginSettingTab {
 						button.setButtonText('Logging in...');
 
 						const result = await this.plugin.api.login(this.loginEmail, this.loginPassword);
-						
+
 						this.isLoggingIn = false;
 						button.setDisabled(false);
-						button.setButtonText('Login');
+						button.setButtonText('Log in');
 
 						if (result.success && result.data) {
 							this.plugin.settings.userToken = result.data.token;
 							await this.plugin.saveSettings();
 							this.loginEmail = '';
 							this.loginPassword = '';
-							new Notice('✓ Successfully logged in to Logically!');
+							new Notice('Successfully logged in');
 							this.display();
 						} else {
-							const message = formatAuthError(result.error || 'Login failed');
+							const message = formatAuthError(result.error ?? 'Login failed');
 							new Notice(`✗ ${message}`);
 						}
 					});
 			})
 			.addButton(button => {
 				button
-					.setButtonText('Create Account')
+					.setButtonText('Create account')
 					.onClick(() => {
 						window.open('https://logically.app/signup', '_blank');
 					});

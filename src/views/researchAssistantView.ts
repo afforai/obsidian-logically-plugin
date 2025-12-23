@@ -21,7 +21,7 @@ export class ResearchAssistantView extends ItemView {
 	}
 
 	getDisplayText(): string {
-		return 'Logically Research Assistant';
+		return 'Logically research assistant';
 	}
 
 	getIcon(): string {

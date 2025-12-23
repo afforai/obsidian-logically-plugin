@@ -1,4 +1,4 @@
-import { addIcon, Notice, Plugin, WorkspaceLeaf } from 'obsidian';
+import { addIcon, Plugin, WorkspaceLeaf } from 'obsidian';
 import type { App, PluginManifest } from 'obsidian';
 import type { LogicallyPlugin, LogicallySettings } from './types';
 import { DEFAULT_SETTINGS, VIEW_TYPE_RESEARCH_ASSISTANT } from './types';
@@ -30,7 +30,7 @@ export default class LogicallyPluginImpl extends Plugin implements LogicallyPlug
 	}
 
 	async onload(): Promise<void> {
-		console.log('Loading Logically plugin...');
+		console.debug('Loading Logically plugin...');
 
 		await this.loadSettings();
 		this.api.updateSettings(this.settings);
@@ -41,10 +41,7 @@ export default class LogicallyPluginImpl extends Plugin implements LogicallyPlug
 		// Register the research assistant view
 		this.registerView(
 			VIEW_TYPE_RESEARCH_ASSISTANT,
-			(leaf: WorkspaceLeaf) => {
-				this.researchAssistantView = new ResearchAssistantView(leaf, this);
-				return this.researchAssistantView;
-			}
+			(leaf: WorkspaceLeaf) => new ResearchAssistantView(leaf, this),
 		);
 
 		// Add settings tab
@@ -56,36 +53,33 @@ export default class LogicallyPluginImpl extends Plugin implements LogicallyPlug
 		// Add command to open research assistant
 		this.addCommand({
 			id: 'open-research-assistant',
-			name: 'Open Research Assistant',
-			callback: () => this.activateView(),
+			name: 'Open research assistant',
+			callback: () => { void this.activateView(); },
 		});
 
 		// Add command to toggle research assistant
 		this.addCommand({
 			id: 'toggle-research-assistant',
-			name: 'Toggle Research Assistant',
-			callback: () => this.toggleView(),
+			name: 'Toggle research assistant',
+			callback: () => { void this.toggleView(); },
 		});
 
-		console.log('Logically plugin loaded');
+		console.debug('Logically plugin loaded');
 	}
 
 	onunload(): void {
-		// Detach all views of this type
-		this.app.workspace.detachLeavesOfType(VIEW_TYPE_RESEARCH_ASSISTANT);
-
 		// Remove ribbon if it exists
 		if (this.ribbon) {
 			this.ribbon.remove();
 			this.ribbon = null;
 		}
 
-		console.log('Logically plugin unloaded');
+		console.debug('Logically plugin unloaded');
 	}
 
 	async loadSettings(): Promise<void> {
-		const data = await this.loadData();
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
+		const data = await this.loadData() as Partial<LogicallySettings> | null;
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, data ?? {});
 	}
 
 	async saveSettings(): Promise<void> {
@@ -101,8 +95,8 @@ export default class LogicallyPluginImpl extends Plugin implements LogicallyPlug
 			if (!this.ribbon) {
 				this.ribbon = this.addRibbonIcon(
 					'logically-icon',
-					'Logically Research Assistant',
-					() => this.toggleView()
+					'Logically research assistant',
+					() => { void this.toggleView(); },
 				);
 			}
 		} else {
@@ -123,7 +117,7 @@ export default class LogicallyPluginImpl extends Plugin implements LogicallyPlug
 			// View already exists, reveal it
 			const leaf = existing[0];
 			if (leaf) {
-				this.app.workspace.revealLeaf(leaf);
+				await this.app.workspace.revealLeaf(leaf);
 			}
 			return;
 		}
@@ -135,7 +129,7 @@ export default class LogicallyPluginImpl extends Plugin implements LogicallyPlug
 				type: VIEW_TYPE_RESEARCH_ASSISTANT,
 				active: true,
 			});
-			this.app.workspace.revealLeaf(rightLeaf);
+			await this.app.workspace.revealLeaf(rightLeaf);
 		}
 	}
 
