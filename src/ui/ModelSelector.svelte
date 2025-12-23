@@ -1,15 +1,26 @@
 <script lang="ts">
 	import { createEventDispatcher, onMount, onDestroy } from "svelte";
-	import type { BaseModel } from "../types";
-	import { AI_MODELS, ModelCategory } from "../types";
+	import type { BaseModel, Privilege } from "../types";
+	import { AI_MODELS, ModelCategory, PRIVILEGES } from "../types";
+	import UpgradeModal from "./UpgradeModal.svelte";
 
 	export let selectedModel: BaseModel;
+	export let userPrivileges: Privilege[] = [];
 
 	const dispatch = createEventDispatcher<{ change: BaseModel }>();
 
 	let isOpen = false;
 	let triggerEl: HTMLButtonElement;
 	let dropdownEl: HTMLDivElement;
+
+	// Upgrade modal state
+	let showUpgradeModal = false;
+	let upgradeModalType: "advanced" | "reasoning" = "advanced";
+
+	$: hasAdvancedAccess = userPrivileges.includes(PRIVILEGES.advanced_models);
+	$: hasReasoningAccess = userPrivileges.includes(
+		PRIVILEGES.reasoning_models,
+	);
 
 	$: standardModels = AI_MODELS.filter(
 		(m) => m.category === ModelCategory.standard,
@@ -23,6 +34,31 @@
 	$: selectedModelInfo = AI_MODELS.find((m) => m.id === selectedModel);
 
 	function handleSelect(model: BaseModel) {
+		const modelInfo = AI_MODELS.find((m) => m.id === model);
+		if (!modelInfo) return;
+
+		// Check privileges for advanced models
+		if (
+			modelInfo.category === ModelCategory.advanced &&
+			!hasAdvancedAccess
+		) {
+			upgradeModalType = "advanced";
+			showUpgradeModal = true;
+			isOpen = false;
+			return;
+		}
+
+		// Check privileges for reasoning models
+		if (
+			modelInfo.category === ModelCategory.reasoning &&
+			!hasReasoningAccess
+		) {
+			upgradeModalType = "reasoning";
+			showUpgradeModal = true;
+			isOpen = false;
+			return;
+		}
+
 		dispatch("change", model);
 		isOpen = false;
 	}
@@ -123,11 +159,15 @@
 					<span class="crown">👑</span>
 					Advanced AI models
 					<span class="section-hint">(For deep research)</span>
+					{#if !hasAdvancedAccess}
+						<span class="locked-badge">🔒</span>
+					{/if}
 				</div>
 				{#each advancedModels as model}
 					<button
 						class="model-item"
 						class:selected={model.id === selectedModel}
+						class:locked={!hasAdvancedAccess}
 						on:click={() => handleSelect(model.id)}
 						type="button"
 					>
@@ -149,6 +189,9 @@
 						<span class="model-item-name">{model.name}</span>
 						{#if model.tag}
 							<span class="model-tag">{model.tag}</span>
+						{/if}
+						{#if !hasAdvancedAccess}
+							<span class="lock-icon">🔒</span>
 						{/if}
 					</button>
 				{/each}
@@ -160,11 +203,15 @@
 					<span class="crown">👑</span>
 					Reasoning AI models
 					<span class="section-hint">(For detailed answers)</span>
+					{#if !hasReasoningAccess}
+						<span class="locked-badge">🔒</span>
+					{/if}
 				</div>
 				{#each reasoningModels as model}
 					<button
 						class="model-item"
 						class:selected={model.id === selectedModel}
+						class:locked={!hasReasoningAccess}
 						on:click={() => handleSelect(model.id)}
 						type="button"
 					>
@@ -187,12 +234,21 @@
 						{#if model.tag}
 							<span class="model-tag">{model.tag}</span>
 						{/if}
+						{#if !hasReasoningAccess}
+							<span class="lock-icon">🔒</span>
+						{/if}
 					</button>
 				{/each}
 			</div>
 		</div>
 	{/if}
 </div>
+
+<UpgradeModal
+	bind:isOpen={showUpgradeModal}
+	modelType={upgradeModalType}
+	on:close={() => (showUpgradeModal = false)}
+/>
 
 <style>
 	.model-selector {
@@ -259,8 +315,9 @@
 		border-radius: 8px;
 		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
 		z-index: 1000;
-		max-height: 360px;
+		max-height: min(70vh, 640px);
 		overflow-y: auto;
+		overflow-x: hidden;
 	}
 
 	.model-section {
@@ -327,5 +384,23 @@
 	.model-item-name {
 		font-size: 14px;
 		flex: 1;
+	}
+
+	.model-item.locked {
+		opacity: 0.7;
+	}
+
+	.model-item.locked:hover {
+		background: rgba(245, 158, 11, 0.1);
+	}
+
+	.locked-badge {
+		font-size: 11px;
+		margin-left: auto;
+	}
+
+	.lock-icon {
+		font-size: 12px;
+		margin-left: auto;
 	}
 </style>

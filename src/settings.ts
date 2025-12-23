@@ -146,8 +146,14 @@ export class LogicallySettingTab extends PluginSettingTab {
 					.setButtonText('Logout')
 					.onClick(async () => {
 						this.plugin.settings.userToken = '';
+						this.plugin.settings.userPrivileges = [];
+						this.plugin.settings.userEmail = '';
 						this.plugin.api.logout();
 						await this.plugin.saveSettings();
+						// Refresh the research assistant view to show login prompt
+						if (this.plugin.researchAssistantView) {
+							this.plugin.researchAssistantView.refresh();
+						}
 						new Notice('Logged out from Logically');
 						this.display();
 					});

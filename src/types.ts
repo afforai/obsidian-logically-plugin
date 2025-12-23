@@ -112,6 +112,10 @@ export interface LogicallySettings {
 	contextFiles: string[];
 	/** Persisted chat history */
 	chatHistory: ChatMessage[];
+	/** User privileges (cached from last login/fetch) */
+	userPrivileges: Privilege[];
+	/** User email (cached) */
+	userEmail: string;
 }
 
 /** Default settings */
@@ -123,6 +127,8 @@ export const DEFAULT_SETTINGS: LogicallySettings = {
 	contextNotes: '',
 	contextFiles: [],
 	chatHistory: [],
+	userPrivileges: [],
+	userEmail: '',
 };
 
 /** Chat message structure */
@@ -143,12 +149,46 @@ export interface ChatSession {
 	updatedAt: number;
 }
 
+/** User privileges matching backend/frontend */
+export type Privilege =
+	| 'advanced_models'
+	| 'reasoning_models'
+	| 'automatic_bibliography'
+	| 'premium_doc_export'
+	| 'download_with_annotations'
+	| 'team'
+	| 'bring_your_own_keys'
+	| 'api_access'
+	| 'admin'
+	| 'ltd_organization';
+
+export const PRIVILEGES: Readonly<Record<Privilege, Privilege>> = Object.freeze({
+	advanced_models: 'advanced_models',
+	reasoning_models: 'reasoning_models',
+	automatic_bibliography: 'automatic_bibliography',
+	premium_doc_export: 'premium_doc_export',
+	download_with_annotations: 'download_with_annotations',
+	team: 'team',
+	bring_your_own_keys: 'bring_your_own_keys',
+	api_access: 'api_access',
+	admin: 'admin',
+	ltd_organization: 'ltd_organization',
+});
+
 /** User information from API */
 export interface UserInfo {
 	id: string;
 	email: string;
 	name?: string;
-	privileges: string[];
+	privileges: Privilege[];
+}
+
+/** User plan information from /plan endpoint */
+export interface PlanInfo {
+	subscription_type: string;
+	privileges: Privilege[];
+	has_addon?: boolean;
+	addon_privileges?: Privilege[];
 }
 
 /** API response wrapper */

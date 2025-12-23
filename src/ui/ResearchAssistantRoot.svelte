@@ -1,7 +1,12 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import { Notice, TFile, type App } from "obsidian";
-	import type { LogicallyPlugin, ChatMessage, BaseModel } from "../types";
+	import type {
+		LogicallyPlugin,
+		ChatMessage,
+		BaseModel,
+		Privilege,
+	} from "../types";
 	import { AI_MODELS } from "../types";
 	import ModelSelector from "./ModelSelector.svelte";
 	import ChatInput from "./ChatInput.svelte";
@@ -21,6 +26,7 @@
 	let filesExpanded = false;
 	let isDraggingOver = false;
 	let filePickerRef: FilePicker;
+	let userPrivileges: Privilege[] = plugin.settings.userPrivileges ?? [];
 	const maxFiles = 5;
 
 	// Debounced save for chat history
@@ -432,6 +438,8 @@
 
 	function handleLogin() {
 		isAuthenticated = true;
+		// Refresh user privileges after login
+		userPrivileges = plugin.settings.userPrivileges ?? [];
 	}
 
 	onMount(() => {
@@ -439,6 +447,7 @@
 		selectedModel = plugin.settings.selectedModel;
 		contextFiles = plugin.settings.contextFiles ?? [];
 		messages = plugin.settings.chatHistory ?? [];
+		userPrivileges = plugin.settings.userPrivileges ?? [];
 	});
 
 	// Save chat history when messages change
@@ -513,6 +522,7 @@
 
 		<ModelSelector
 			{selectedModel}
+			{userPrivileges}
 			on:change={(e) => handleModelChange(e.detail)}
 		/>
 

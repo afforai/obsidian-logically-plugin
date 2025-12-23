@@ -7,6 +7,7 @@ import type {
 	BaseModel,
 	ChatMessage,
 	LogicallySettings,
+	PlanInfo,
 	UserInfo,
 } from '../types';
 import { DEFAULT_SETTINGS } from '../types';
@@ -179,6 +180,50 @@ export class LogicallyApi {
 	}
 
 	/**
+	 * Login with Google OAuth access token.
+	 * Backend verifies the token with Google and returns a JWT.
+	 */
+	async loginWithGoogle(accessToken: string): Promise<ApiResponse<{ token: string; user: UserInfo; email: string }>> {
+		try {
+			const response = await requestUrl({
+				url: this.getUrl('/google_oauth'),
+				method: 'POST',
+				throw: false,
+				contentType: 'application/json',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({ access_token: accessToken }),
+			});
+
+			if (response.status >= 200 && response.status < 300) {
+				const data = response.json;
+				const token = data.token || data.accessToken;
+				if (!token || token === 'null') {
+					return { success: false, error: 'No token received from server' };
+				}
+				return {
+					success: true,
+					data: {
+						token,
+						user: data.user || { id: '', email: data.email || '', privileges: [] },
+						email: data.email || '',
+					},
+				};
+			}
+
+			const errorMessage = this.parseError(response.json, response.status);
+			return { success: false, error: errorMessage };
+		} catch (error) {
+			console.error('[Logically API] Google OAuth failed:', error);
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Google login failed',
+			};
+		}
+	}
+
+	/**
 	 * Verify the current token is valid.
 	 */
 	async verifyToken(): Promise<ApiResponse<UserInfo>> {
@@ -190,6 +235,13 @@ export class LogicallyApi {
 	 */
 	async getCurrentUser(): Promise<ApiResponse<UserInfo>> {
 		return this.request<UserInfo>('/user');
+	}
+
+	/**
+	 * Get current user's plan information (includes privileges).
+	 */
+	async getUserPlan(): Promise<ApiResponse<PlanInfo>> {
+		return this.request<PlanInfo>('/plan');
 	}
 
 	/**

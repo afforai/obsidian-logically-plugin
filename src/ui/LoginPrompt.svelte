@@ -24,15 +24,37 @@
 
 		const result = await plugin.api.login(email, password);
 
-		isLoading = false;
-
 		if (result.success && result.data) {
 			plugin.settings.userToken = result.data.token;
+			plugin.settings.userEmail = email;
 			await plugin.saveSettings();
 			plugin.api.updateSettings(plugin.settings);
+
+			// Fetch user privileges after login
+			const planResult = await plugin.api.getUserPlan();
+			if (planResult.success && planResult.data) {
+				plugin.settings.userPrivileges =
+					planResult.data.privileges ?? [];
+				// Also include addon privileges if user has addon
+				if (
+					planResult.data.has_addon &&
+					planResult.data.addon_privileges
+				) {
+					plugin.settings.userPrivileges = [
+						...new Set([
+							...plugin.settings.userPrivileges,
+							...planResult.data.addon_privileges,
+						]),
+					];
+				}
+				await plugin.saveSettings();
+			}
+
+			isLoading = false;
 			new Notice("✓ Successfully logged in to Logically!");
 			dispatch("login");
 		} else {
+			isLoading = false;
 			error = formatAuthError(result.error || "Login failed");
 		}
 	}
