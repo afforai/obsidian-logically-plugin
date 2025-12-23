@@ -1,4 +1,7 @@
 # Logically Research Assistant (Obsidian)
+[![Release](https://github.com/afforai/obsidian-logically-plugin/actions/workflows/release.yml/badge.svg)](https://github.com/afforai/obsidian-logically-plugin/actions/workflows/release.yml)
+[![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/afforai/obsidian-logically-plugin?style=flat&sort=semver)](https://github.com/afforai/obsidian-logically-plugin/releases/latest)
+![GitHub All Releases](https://img.shields.io/github/downloads/afforai/obsidian-logically-plugin/total?style=flat)
 
 Chat with Logically’s research assistant inside Obsidian (right sidebar), with optional context from your vault notes.
 
