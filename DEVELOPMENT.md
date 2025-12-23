@@ -39,7 +39,7 @@ pnpm dev:install
 pnpm dev:install -- "D:\Documents\Obsidian\MyVault"
 ```
 
-If you need to change the default vault path, edit `scripts/dev-install.js`.
+The script does not assume a default vault path. Provide it via `OBSIDIAN_VAULT` or an argument.
 
 ## Releases
 

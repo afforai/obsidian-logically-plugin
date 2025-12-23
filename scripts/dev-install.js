@@ -30,22 +30,16 @@ function fileExists(p) {
 	}
 }
 
-// Default vault path - UPDATE THIS to your vault path
-const DEFAULT_VAULT = "D:\\Documents\\Obsidian\\Shirayuki";
-const vaultArg = process.argv[2] || process.env.OBSIDIAN_VAULT || DEFAULT_VAULT;
+const vaultArg = process.argv[2] || process.env.OBSIDIAN_VAULT;
 
 if (!vaultArg) {
 	exitWithMsg(
 		"\nERROR: No vault path provided. Set OBSIDIAN_VAULT env var or pass a path as an argument.\n\n" +
 			"Usage:\n" +
-			'  OBSIDIAN_VAULT="E:\\\\path\\\\to\\\\vault" npm run dev:install\n' +
+			'  OBSIDIAN_VAULT="E:\\\\path\\\\to\\\\vault" pnpm dev:install\n' +
 			"  or\n" +
-			'  npm run dev:install -- "E:\\path\\to\\vault"\n'
+			'  pnpm dev:install -- "E:\\path\\to\\vault"\n'
 	);
-}
-
-if (!process.argv[2] && !process.env.OBSIDIAN_VAULT) {
-	console.log(`No vault path specified. Using default: ${DEFAULT_VAULT}`);
 }
 
 const vaultPath = path.resolve(vaultArg);
