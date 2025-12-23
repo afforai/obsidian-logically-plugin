@@ -1,117 +1,78 @@
-# Logically Research Assistant for Obsidian
+# Logically Research Assistant (Obsidian)
 
-AI-powered research assistant plugin for Obsidian, integrated with [Logically](https://logically.app).
+Chat with Logically’s research assistant inside Obsidian - in the right sidebar - with optional context from your vault notes.
 
-## Features
+## What you get
 
-- **AI Research Assistant** - Chat with AI directly in Obsidian's right sidebar
-- **Multiple AI Models** - Choose from Standard, Advanced, and Reasoning models:
-  - **Standard**: Gemini Flash 2.5, GPT-5 mini, Claude Haiku 4.5
-  - **Advanced**: Gemini Pro 2.5, GPT-5.1, Claude Sonnet 4.5
-  - **Reasoning**: Gemini 3 Pro Preview, GPT-5.2, Claude Opus 4.5
-- **Persistent Authentication** - Login once and stay connected
-- **Sleek Modern UI** - Clean, responsive design that matches Obsidian's theme
-- **Configurable API Endpoint** - Default to api.logically.app with custom override option
+- **Sidebar chat** inside Obsidian
+- **Model selection** (Standard / Advanced / Reasoning)
+- **Add context from your vault** (select notes, or drag notes into the panel)
+- **Insert answers into your current note**
+- **Stays signed in** after you log in
 
-## Installation
+## Requirements
 
-### Manual Installation
+- Obsidian desktop or mobile
+- A Logically account
+- Internet access (messages are sent to Logically’s API)
 
-1. Download the latest release from the releases page
-2. Extract the files into your vault's `.obsidian/plugins/logically/` folder
-3. Reload Obsidian
-4. Enable the plugin in Settings → Community Plugins
+## Install
 
-### Development Installation
+### Option A – Community Plugins
 
-1. Clone this repository into your vault's `.obsidian/plugins/` folder
-2. Install dependencies: `pnpm install`
-3. Build the plugin: `pnpm build`
-4. Reload Obsidian and enable the plugin
+1. Open **Settings → Community plugins**
+2. Select **Browse** and search for **Logically Research Assistant**
+3. Install, then enable the plugin
 
-## Development
+### Option B – Private distribution
 
-### Prerequisites
+If it is not listed in the Community Plugins browser, you will need a direct install bundle from Logically.
+Please reach out to Logically support for access.
 
-- Node.js (v18+)
-- pnpm
+## Set up
 
-### Commands
+1. Open **Settings → Logically Research Assistant**
+2. Log in with your Logically email + password
+3. Pick a **Default model**
 
-```bash
-# Install dependencies
-pnpm install
+Tip: You can use **Verify connection** in settings to test your login/API.
 
-# Build for production
-pnpm build
+## Use
 
-# Development mode with watch
-pnpm dev
+1. Open the assistant:
+  - Click the Logically ribbon icon, or
+  - Use command palette: **Logically: Open Research Assistant**
+2. Choose a model from the dropdown
+3. Ask your question
 
-# Install to your vault (set OBSIDIAN_VAULT env var or pass path)
-pnpm dev:install
+### Add note context (recommended)
 
-# Watch mode with auto-install
-pnpm dev:watch
-```
+You can include up to **5** Markdown notes as reference context.
 
-### Dev Install Script
+- Click **Files** in the assistant header and select notes, or
+- Drag a note from Obsidian’s file explorer into the assistant panel
 
-The `dev:install` script copies the built plugin to your Obsidian vault:
+The assistant will read those notes and append them as reference context for your next message.
 
-```bash
-# Using environment variable
-$env:OBSIDIAN_VAULT = 'D:\Documents\Obsidian\MyVault'
-pnpm dev:install
+### Insert an answer into your note
 
-# Or pass path as argument
-pnpm dev:install -- "D:\Documents\Obsidian\MyVault"
-```
+In the chat, use the “insert into note” action on an assistant message to paste the response into the currently open note.
 
-Edit `scripts/dev-install.js` to change the default vault path.
+## Privacy & data
 
-## Configuration
+- When you send a message, the plugin sends your prompt and relevant chat history to Logically’s API.
+- If you add context files, the contents of those selected notes are included with the request.
 
-After installing, go to Settings → Logically Research Assistant to:
+Avoid adding sensitive/private content you don’t want processed remotely.
 
-1. **Login** - Enter your Logically credentials
-2. **API URL** - Configure custom API endpoint (default: https://api.logically.app)
-3. **Show Ribbon** - Toggle the sidebar icon
-4. **Default Model** - Select your preferred AI model
+## Troubleshooting
 
-## Usage
-
-1. Click the Logically icon in the left ribbon, or use the command palette:
-   - `Logically: Open Research Assistant`
-   - `Logically: Toggle Research Assistant`
-2. Login with your Logically account
-3. Select an AI model from the dropdown
-4. Start chatting!
-
-## Project Structure
-
-```
-src/
-├── main.ts                 # Plugin entry point
-├── settings.ts             # Settings tab
-├── types.ts                # Type definitions
-├── services/
-│   └── logicallyApi.ts     # API client
-├── views/
-│   └── researchAssistantView.ts  # Sidebar view
-└── ui/
-    ├── ResearchAssistantRoot.svelte  # Main component
-    ├── ModelSelector.svelte          # Model dropdown
-    ├── ChatInput.svelte              # Message input
-    ├── MessageList.svelte            # Chat messages
-    └── LoginPrompt.svelte            # Login form
-```
-
-## License
-
-MIT
+- **Login fails**: confirm your credentials work on https://logically.app and try **Verify connection** in settings.
+- **Network / connection errors**: check your internet connection and try **Verify connection**.
+- **Dragging notes doesn’t add them**: only Markdown notes can be added; try dragging a `.md` note from the Obsidian file explorer.
+- **File list looks empty**: ensure your vault contains Markdown files and Obsidian has finished indexing.
 
 ## Links
 
-- [Logically](https://logically.app)
-- [Obsidian](https://obsidian.md)
+- https://logically.app
+- https://obsidian.md

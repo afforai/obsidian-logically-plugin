@@ -3,3 +3,5 @@ declare module '*.svelte' {
 	const component: ComponentType<SvelteComponent>;
 	export default component;
 }
+
+declare const __LOGICALLY_DEV__: boolean;

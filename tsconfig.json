@@ -19,7 +19,7 @@
 		"useUnknownInCatchVariables": true,
 		"verbatimModuleSyntax": true,
 		"lib": ["DOM", "ES5", "ES6", "ES7"],
-		"types": ["svelte"]
+		"types": ["svelte", "node"]
 	},
 	"include": ["src/**/*.ts", "src/**/*.svelte"]
 }

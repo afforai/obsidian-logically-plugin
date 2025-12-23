@@ -1,6 +1,8 @@
 import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
 import type { LogicallyPlugin, LogicallySettings, BaseModel } from './types';
 import { DEFAULT_SETTINGS, AI_MODELS, ModelCategory } from './types';
+import { IS_DEV_BUILD } from './utils/env';
+import { formatAuthError } from './utils/authErrors';
 
 /**
  * Settings tab for the Logically plugin.
@@ -38,22 +40,24 @@ export class LogicallySettingTab extends PluginSettingTab {
 			this.displayLoginForm(containerEl);
 		}
 
-		// API Configuration
-		containerEl.createEl('h3', { text: 'API Configuration' });
+		if (IS_DEV_BUILD) {
+			// API Configuration
+			containerEl.createEl('h3', { text: 'API Configuration' });
 
-		new Setting(containerEl)
-			.setName('API URL')
-			.setDesc('The Logically API endpoint. Default: https://api.logically.app')
-			.addText(text => {
-				text
-					.setPlaceholder('https://api.logically.app')
-					.setValue(this.plugin.settings.apiUrl)
-					.onChange(async (value) => {
-						this.plugin.settings.apiUrl = value || DEFAULT_SETTINGS.apiUrl;
-						this.plugin.api.updateSettings(this.plugin.settings);
-						await this.plugin.saveSettings();
-					});
-			});
+			new Setting(containerEl)
+				.setName('API URL')
+				.setDesc('The Logically API endpoint. Default: https://api.logically.app')
+				.addText(text => {
+					text
+						.setPlaceholder('https://api.logically.app')
+						.setValue(this.plugin.settings.apiUrl)
+						.onChange(async (value) => {
+							this.plugin.settings.apiUrl = value || DEFAULT_SETTINGS.apiUrl;
+							this.plugin.api.updateSettings(this.plugin.settings);
+							await this.plugin.saveSettings();
+						});
+				});
+		}
 
 		// UI Configuration
 		containerEl.createEl('h3', { text: 'Interface' });
@@ -226,7 +230,8 @@ export class LogicallySettingTab extends PluginSettingTab {
 							new Notice('✓ Successfully logged in to Logically!');
 							this.display();
 						} else {
-							new Notice(`✗ Login failed: ${result.error}`);
+							const message = formatAuthError(result.error || 'Login failed');
+							new Notice(`✗ ${message}`);
 						}
 					});
 			})

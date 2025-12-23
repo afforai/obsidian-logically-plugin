@@ -2,6 +2,7 @@
 	import { createEventDispatcher } from "svelte";
 	import { Notice } from "obsidian";
 	import type { LogicallyPlugin } from "../types";
+	import { formatAuthError } from "../utils/authErrors";
 
 	export let plugin: LogicallyPlugin;
 
@@ -11,20 +12,6 @@
 	let password = "";
 	let isLoading = false;
 	let error = "";
-
-	function formatError(message: string): string {
-		if (!message) return "Login failed";
-		switch (message) {
-			case ".no_token":
-				return "Authentication failed. Please check your credentials.";
-			case ".auth_failed":
-				return "Invalid email or password.";
-			case ".token_expired":
-				return "Your session expired. Please sign in again.";
-			default:
-				return message;
-		}
-	}
 
 	async function handleLogin() {
 		if (!email || !password) {
@@ -46,7 +33,7 @@
 			new Notice("✓ Successfully logged in to Logically!");
 			dispatch("login");
 		} else {
-			error = formatError(result.error || "Login failed");
+			error = formatAuthError(result.error || "Login failed");
 		}
 	}
 
