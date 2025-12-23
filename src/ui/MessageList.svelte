@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, afterUpdate, onDestroy } from "svelte";
 	import { MarkdownRenderer, Component, type App } from "obsidian";
-	import type { ChatMessage } from "../types";
+	import type { ChatMessage, SearchMode } from "../types";
 	import { AI_MODELS } from "../types";
 	import { createEventDispatcher } from "svelte";
 	import SourcesTable from "./SourcesTable.svelte";
@@ -10,7 +10,7 @@
 	export let isLoading = false;
 	export let currentResponse = "";
 	export let app: App;
-	export let searchMode: "web" | "semantic_scholar" | "files" = "web";
+	export let searchMode: SearchMode = "files";
 
 	/**
 	 * Convert citation tokens like 【12†source】 to clickable superscript links.
