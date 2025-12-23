@@ -589,23 +589,64 @@
 			.map((s) => s.trim())
 			.filter(Boolean);
 
-		let addedCount = 0;
-		for (const line of allLines) {
-			if (contextFiles.length >= maxFiles) break;
+		const addedFiles: string[] = [];
+		const alreadyAddedFiles: string[] = [];
+		const unresolvedLines: string[] = [];
+		const skippedDueToLimit: string[] = [];
 
+		for (const line of allLines) {
 			const resolved = resolveFilePath(line);
-			if (resolved && !contextFiles.includes(resolved)) {
-				contextFiles = [...contextFiles, resolved];
-				addedCount++;
+			if (!resolved) {
+				unresolvedLines.push(line);
+				continue;
 			}
+
+			if (
+				contextFiles.includes(resolved) ||
+				addedFiles.includes(resolved)
+			) {
+				alreadyAddedFiles.push(resolved);
+				continue;
+			}
+
+			if (contextFiles.length + addedFiles.length >= maxFiles) {
+				skippedDueToLimit.push(resolved);
+				continue;
+			}
+
+			addedFiles.push(resolved);
 		}
 
-		if (addedCount > 0) {
+		if (addedFiles.length > 0) {
+			contextFiles = [...contextFiles, ...addedFiles];
 			plugin.settings.contextFiles = contextFiles;
 			plugin.saveSettings();
 			filesExpanded = true;
-			new Notice(`Added ${addedCount} file(s) as context`);
-		} else if (allLines.length > 0) {
+			new Notice(`Added ${addedFiles.length} file(s) as context`);
+		}
+
+		if (alreadyAddedFiles.length > 0) {
+			const unique = Array.from(new Set(alreadyAddedFiles));
+			const names = unique.map((p) => p.split("/").pop() ?? p);
+			const maxShown = 4;
+			const shown = names.slice(0, maxShown);
+			const more = names.length - shown.length;
+			new Notice(
+				`${shown.join(", ")}${more > 0 ? ` and ${more} more` : ""} ${
+					names.length === 1 ? "was" : "were"
+				} already added`,
+			);
+		}
+
+		if (skippedDueToLimit.length > 0) {
+			new Notice(`Reached the ${maxFiles} file limit`);
+		}
+
+		if (
+			unresolvedLines.length > 0 &&
+			addedFiles.length === 0 &&
+			alreadyAddedFiles.length === 0
+		) {
 			new Notice("Could not resolve dropped file(s)");
 		}
 	}
@@ -753,6 +794,7 @@
 				{isLoading}
 				{currentResponse}
 				{app}
+				searchMode={selectedMode}
 				on:insertToNote={(e) => handleInsertToNote(e.detail)}
 				on:deleteFromIndex={(e) => handleDeleteFromIndex(e.detail)}
 				on:regenerate={(e) => handleRegenerate(e.detail)}
