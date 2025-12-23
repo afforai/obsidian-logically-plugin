@@ -4,11 +4,41 @@
 	import type { ChatMessage } from "../types";
 	import { AI_MODELS } from "../types";
 	import { createEventDispatcher } from "svelte";
+	import SourcesTable from "./SourcesTable.svelte";
 
 	export let messages: ChatMessage[] = [];
 	export let isLoading = false;
 	export let currentResponse = "";
 	export let app: App;
+
+	/**
+	 * Convert citation tokens like 【12†source】 to clickable superscript links.
+	 * The number refers to the source index in the sources array.
+	 */
+	function processCitationTokens(
+		content: string,
+		sources: import("../types").SourceNode[] | undefined,
+	): string {
+		if (!content) return content;
+
+		// Match citation tokens: 【N†source】 or 【N†...】
+		return content.replace(/【(\d+)†[^】]*】/g, (match, num) => {
+			const index = parseInt(num, 10) - 1; // Convert to 0-indexed
+			const source = sources?.[index];
+
+			if (source) {
+				const url = source.pdfUrl || source.url;
+				const title = source.filename || "Source";
+				if (url) {
+					return `<sup class="ra-citation-link"><a href="${url}" target="_blank" title="${title}">[${num}]</a></sup>`;
+				}
+				// No URL - just show the number with title tooltip
+				return `<sup class="ra-citation-link" title="${title}">[${num}]</sup>`;
+			}
+			// Source not found, just show the number
+			return `<sup class="ra-citation-link">[${num}]</sup>`;
+		});
+	}
 
 	const dispatch = createEventDispatcher<{
 		insertToNote: ChatMessage;
@@ -35,12 +65,18 @@
 		});
 	}
 
-	async function renderMarkdown(el: HTMLElement, content: string) {
+	async function renderMarkdown(
+		el: HTMLElement,
+		content: string,
+		sources?: import("../types").SourceNode[],
+	) {
 		el.empty();
 		try {
+			// Process citation tokens before rendering
+			const processedContent = processCitationTokens(content, sources);
 			await MarkdownRenderer.render(
 				app,
-				content,
+				processedContent,
 				el,
 				"",
 				markdownComponent,
@@ -80,11 +116,19 @@
 			) as HTMLElement;
 			if (!contentEl) continue;
 
-			// Only re-render if content changed or not yet rendered
+			// Include sources in the content hash for re-render check
+			const sourcesHash = msg.sources
+				? JSON.stringify(msg.sources.length)
+				: "0";
+			const contentKey = `${msg.content}|${sourcesHash}`;
 			const currentContent = contentEl.getAttribute("data-content");
-			if (currentContent !== msg.content) {
-				await renderMarkdown(contentEl, msg.content || "...");
-				contentEl.setAttribute("data-content", msg.content);
+			if (currentContent !== contentKey) {
+				await renderMarkdown(
+					contentEl,
+					msg.content || "...",
+					msg.sources,
+				);
+				contentEl.setAttribute("data-content", contentKey);
 			}
 		}
 	}
@@ -235,6 +279,10 @@
 						</button>
 					{/if}
 				</div>
+				<!-- Sources table for assistant messages with citations -->
+				{#if message.role === "assistant" && message.sources && message.sources.length > 0}
+					<SourcesTable sources={message.sources} {app} />
+				{/if}
 			</div>
 		{/each}
 
@@ -520,5 +568,27 @@
 			transform: translateY(-4px);
 			opacity: 1;
 		}
+	}
+
+	/* Citation link styling */
+	.message.assistant .message-content :global(.ra-citation-link) {
+		font-size: 10px;
+		vertical-align: super;
+		margin: 0 1px;
+	}
+
+	.message.assistant .message-content :global(.ra-citation-link a) {
+		color: var(--interactive-accent);
+		text-decoration: none;
+		font-weight: 600;
+		padding: 1px 3px;
+		border-radius: 3px;
+		background: var(--background-primary);
+		transition: all 0.15s ease;
+	}
+
+	.message.assistant .message-content :global(.ra-citation-link a:hover) {
+		background: var(--interactive-accent);
+		color: var(--text-on-accent);
 	}
 </style>

@@ -9,14 +9,17 @@ import type {
 	LogicallySettings,
 	PlanInfo,
 	UserInfo,
+	SearchMode,
+	SourceNode,
 } from '../types';
-import { DEFAULT_SETTINGS } from '../types';
+import { DEFAULT_SETTINGS, SEARCH_MODE_TO_TOOL } from '../types';
 import { IS_DEV_BUILD } from '../utils/env';
 
 type StreamHandler = {
 	onChunk: (chunk: string) => void;
 	onComplete: () => void;
 	onError: (error: string) => void;
+	onCitation?: (sources: SourceNode[]) => void;
 };
 
 const STREAM_TOKEN_REGEX = /❬([A-Z_]+)❭([\s\S]*?)❬\/\1❭/g;
@@ -250,9 +253,13 @@ export class LogicallyApi {
 	private buildCompletionPayload(
 		message: string,
 		conversationHistory: ChatMessage[],
+		searchMode: SearchMode = 'files',
 		contextNotes?: string,
 	) {
 		const base = DEFAULT_SESSION_FIELDS();
+		// Set the tool based on search mode
+		base.tool = SEARCH_MODE_TO_TOOL[searchMode] || 'doc_retrieval';
+		
 		const notes = (contextNotes ?? '').trim();
 		if (notes) {
 			base.system = `User notes (treat as reference context):\n${notes}`;
@@ -282,6 +289,8 @@ export class LogicallyApi {
 		onComplete: () => void,
 		onError: (error: string) => void,
 		contextNotes?: string,
+		searchMode: SearchMode = 'files',
+		onCitation?: (sources: SourceNode[]) => void,
 	): Promise<void> {
 		if (!this.settings.userToken) {
 			onError('You are not logged in');
@@ -292,12 +301,13 @@ export class LogicallyApi {
 			const payload = this.buildCompletionPayload(
 				message,
 				conversationHistory,
+				searchMode,
 				contextNotes,
 			);
 			await this.streamCompletionViaNodeHttp(
 				new URL(this.getUrl('/app/completion')),
 				JSON.stringify(payload),
-				{ onChunk, onComplete, onError },
+				{ onChunk, onComplete, onError, onCitation },
 			);
 		} catch (error) {
 			console.error('[Logically API] Stream failed:', error);
@@ -402,9 +412,28 @@ export class LogicallyApi {
 				}
 				case 'CITATION': {
 					// CITATION packet contains final completion + metadata for citations.
-					// We do NOT append parsed.completion here because the text was already
-					// streamed via COMPLETION chunks. Appending it would duplicate the response.
-					// Future enhancement: could extract citation metadata if needed.
+					// Extract source nodes from the nodes array.
+					if (handlers.onCitation) {
+						try {
+							const parsed = JSON.parse(payload);
+							if (parsed.nodes && Array.isArray(parsed.nodes)) {
+								const sources: SourceNode[] = parsed.nodes.map((n: Record<string, unknown>) => ({
+									fileid: n.fileid as string | undefined,
+									filename: (n.filename as string) || 'Unknown',
+									filetype: (n.filetype as string) || '',
+									url: n.url as string | undefined,
+									pdfUrl: n.pdfUrl as string | undefined,
+									pages: n.pages as number[] | undefined,
+									content: n.content as string | undefined,
+									citationCount: (n.others as Record<string, unknown>)?.citation_count as number | undefined,
+									referenceCount: (n.others as Record<string, unknown>)?.reference_count as number | undefined,
+								}));
+								handlers.onCitation(sources);
+							}
+						} catch (_e) {
+							// Ignore parse errors for citation data
+						}
+					}
 					break;
 				}
 				case 'ERROR': {
@@ -479,7 +508,28 @@ export class LogicallyApi {
 					break;
 				}
 				case 'CITATION': {
-					// See consumeStream() for rationale: do not append parsed.completion.
+					// Extract source nodes from the nodes array.
+					if (handlers.onCitation) {
+						try {
+							const parsed = JSON.parse(payload);
+							if (parsed.nodes && Array.isArray(parsed.nodes)) {
+								const sources: SourceNode[] = parsed.nodes.map((n: Record<string, unknown>) => ({
+									fileid: n.fileid as string | undefined,
+									filename: (n.filename as string) || 'Unknown',
+									filetype: (n.filetype as string) || '',
+									url: n.url as string | undefined,
+									pdfUrl: n.pdfUrl as string | undefined,
+									pages: n.pages as number[] | undefined,
+									content: n.content as string | undefined,
+									citationCount: (n.others as Record<string, unknown>)?.citation_count as number | undefined,
+									referenceCount: (n.others as Record<string, unknown>)?.reference_count as number | undefined,
+								}));
+								handlers.onCitation(sources);
+							}
+						} catch (_e) {
+							// Ignore parse errors for citation data
+						}
+					}
 					break;
 				}
 				case 'ERROR': {

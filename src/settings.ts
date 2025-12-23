@@ -127,6 +127,11 @@ export class LogicallySettingTab extends PluginSettingTab {
 			});
 		}
 
+		// Advanced Section
+		containerEl.createEl('h3', { text: 'Advanced' });
+		
+		this.displayTokenLogin(containerEl);
+
 		// Footer
 		containerEl.createEl('div', { cls: 'logically-settings-footer' }, el => {
 			el.createEl('p', { text: 'Need help? Visit ' });
@@ -135,6 +140,78 @@ export class LogicallySettingTab extends PluginSettingTab {
 				href: 'https://logically.app',
 			});
 		});
+	}
+
+	private tokenInput = '';
+	private isValidatingToken = false;
+
+	private displayTokenLogin(containerEl: HTMLElement): void {
+		const tokenContainer = containerEl.createEl('div', { cls: 'logically-token-login' });
+
+		new Setting(tokenContainer)
+			.setName('Login with token')
+			.setDesc('Paste your user token directly to authenticate. Get your token from the Logically web app.')
+			.addText(text => {
+				text
+					.setPlaceholder('Paste your token here...')
+					.setValue(this.tokenInput)
+					.onChange(value => {
+						this.tokenInput = value;
+					});
+				text.inputEl.type = 'password';
+				text.inputEl.style.width = '100%';
+			});
+
+		new Setting(tokenContainer)
+			.addButton(button => {
+				button
+					.setButtonText('Validate & Login')
+					.onClick(async () => {
+						if (!this.tokenInput.trim()) {
+							new Notice('Please enter a token');
+							return;
+						}
+
+						if (this.isValidatingToken) return;
+						this.isValidatingToken = true;
+						button.setDisabled(true);
+						button.setButtonText('Validating...');
+
+						// Temporarily set the token to validate it
+						const oldToken = this.plugin.settings.userToken;
+						this.plugin.settings.userToken = this.tokenInput.trim();
+						this.plugin.api.updateSettings(this.plugin.settings);
+
+						const result = await this.plugin.api.verifyToken();
+
+						if (result.success && result.data) {
+							// Token is valid, fetch user plan for privileges
+							const planResult = await this.plugin.api.getUserPlan();
+							
+							this.plugin.settings.userEmail = result.data.email || '';
+							this.plugin.settings.userPrivileges = planResult.data?.privileges || result.data.privileges || [];
+							await this.plugin.saveSettings();
+
+							// Refresh the research assistant view
+							if (this.plugin.researchAssistantView) {
+								this.plugin.researchAssistantView.refresh();
+							}
+
+							new Notice('✓ Token validated! You are now logged in.');
+							this.tokenInput = '';
+							this.display();
+						} else {
+							// Token is invalid, restore the old token
+							this.plugin.settings.userToken = oldToken;
+							this.plugin.api.updateSettings(this.plugin.settings);
+							new Notice(`✗ Invalid token: ${result.error || 'Validation failed'}`);
+						}
+
+						this.isValidatingToken = false;
+						button.setDisabled(false);
+						button.setButtonText('Validate & Login');
+					});
+			});
 	}
 
 	private displayLoggedInState(containerEl: HTMLElement): void {

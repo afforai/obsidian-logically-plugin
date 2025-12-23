@@ -6,13 +6,16 @@
 		ChatMessage,
 		BaseModel,
 		Privilege,
+		SearchMode,
+		SourceNode,
 	} from "../types";
 	import { AI_MODELS } from "../types";
-	import ModelSelector from "./ModelSelector.svelte";
 	import ChatInput from "./ChatInput.svelte";
 	import MessageList from "./MessageList.svelte";
 	import LoginPrompt from "./LoginPrompt.svelte";
 	import FilePicker from "./FilePicker.svelte";
+	import UpgradeModal from "./UpgradeModal.svelte";
+	import SettingsPanel from "./SettingsPanel.svelte";
 
 	export let plugin: LogicallyPlugin;
 	export let app: App;
@@ -21,13 +24,22 @@
 	let isLoading = false;
 	let currentResponse = "";
 	let selectedModel: BaseModel = plugin.settings.selectedModel;
+	let selectedMode: SearchMode = plugin.settings.searchMode ?? "files";
 	let isAuthenticated = plugin.api.isAuthenticated();
 	let contextFiles: string[] = plugin.settings.contextFiles ?? [];
 	let filesExpanded = false;
 	let isDraggingOver = false;
 	let filePickerRef: FilePicker;
 	let userPrivileges: Privilege[] = plugin.settings.userPrivileges ?? [];
+	let userEmail: string = plugin.settings.userEmail ?? "";
 	const maxFiles = 5;
+
+	// Upgrade modal state
+	let showUpgradeModal = false;
+	let upgradeModalType: "advanced" | "reasoning" = "advanced";
+
+	// Settings panel state
+	let showSettingsPanel = false;
 
 	// Debounced save for chat history
 	let saveTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -67,10 +79,20 @@
 		}
 	}
 
+	async function handleModeChange(mode: SearchMode) {
+		selectedMode = mode;
+		plugin.settings.searchMode = mode;
+		await plugin.saveSettings();
+	}
+
 	async function handleFilesChange(files: string[]) {
 		contextFiles = files;
 		plugin.settings.contextFiles = files;
 		await plugin.saveSettings();
+	}
+
+	function handleToggleFiles() {
+		filesExpanded = !filesExpanded;
 	}
 
 	async function getContextFromFiles(): Promise<string> {
@@ -92,6 +114,49 @@
 
 		if (contents.length === 0) return "";
 		return `\n\n---\n# Reference Files\n\n${contents.join("\n\n---\n\n")}`;
+	}
+
+	function getCustomInstructionContext(): string {
+		const instruction = plugin.settings.customInstruction?.trim();
+		if (!instruction) return "";
+		return `\n\n---\n# Custom Instructions\n\n${instruction}`;
+	}
+
+	/**
+	 * Convert context files to SourceNode entries for display in the sources table.
+	 */
+	function getContextFilesAsSources(): SourceNode[] {
+		if (selectedMode !== "files" || contextFiles.length === 0) return [];
+
+		return contextFiles.map((filePath) => ({
+			fileid: filePath,
+			filename:
+				filePath.split("/").pop()?.replace(/\.md$/, "") || filePath,
+			filetype: "reference",
+		}));
+	}
+
+	/**
+	 * Handle errors from the API, with special handling for quota errors.
+	 */
+	function handleApiError(
+		error: string,
+		assistantMessage: ChatMessage,
+	): void {
+		// Check for query quota error
+		if (error.includes("query_quota") || error.includes(".query_quota")) {
+			upsertMessage({
+				...assistantMessage,
+				content: `**You've reached your free query limit** 🚫\n\nYou've used all your free queries for this period. To continue using Logically's Research Assistant:\n\n- **Upgrade to a paid plan** for unlimited queries\n- Visit [logically.app/pricing](https://logically.app/pricing) to see available plans\n\nYour free quota will reset at the start of the next billing period.`,
+			});
+		} else {
+			upsertMessage({
+				...assistantMessage,
+				content: `Error: ${error}`,
+			});
+		}
+		isLoading = false;
+		currentResponse = "";
 	}
 
 	async function handleSendMessage(text: string) {
@@ -116,11 +181,16 @@
 			content: "",
 			timestamp: Date.now(),
 			model: selectedModel,
+			sources: [],
 		};
 		messages = [...messages, assistantMessage];
 
 		try {
-			const fileContext = await getContextFromFiles();
+			// Only include file context when mode is "files"
+			const fileContext =
+				selectedMode === "files" ? await getContextFromFiles() : "";
+			const customContext = getCustomInstructionContext();
+			const combinedContext = customContext + fileContext;
 
 			await plugin.api.streamMessage(
 				text,
@@ -136,16 +206,37 @@
 				() => {
 					isLoading = false;
 					currentResponse = "";
+					// After completion, ensure reference files are in sources if no API sources
+					const currentMsg = messages.find(
+						(m) => m.id === assistantMessage.id,
+					);
+					if (
+						currentMsg &&
+						(!currentMsg.sources || currentMsg.sources.length === 0)
+					) {
+						const fileSources = getContextFilesAsSources();
+						if (fileSources.length > 0) {
+							upsertMessage({
+								...assistantMessage,
+								content: currentResponse,
+								sources: fileSources,
+							});
+						}
+					}
 				},
-				(error: string) => {
+				(error: string) => handleApiError(error, assistantMessage),
+				combinedContext,
+				selectedMode,
+				(sources: SourceNode[]) => {
+					// Merge API sources with context file sources
+					const fileSources = getContextFilesAsSources();
+					const allSources = [...sources, ...fileSources];
 					upsertMessage({
 						...assistantMessage,
-						content: `Error: ${error}`,
+						content: currentResponse,
+						sources: allSources,
 					});
-					isLoading = false;
-					currentResponse = "";
 				},
-				fileContext,
 			);
 		} catch (error) {
 			console.error("[Logically] Error sending message:", error);
@@ -166,7 +257,6 @@
 
 	function handleDeleteFromIndex(index: number) {
 		if (isLoading) return;
-		// Delete message at index and everything after
 		messages = messages.slice(0, index);
 		saveChatHistory();
 	}
@@ -174,11 +264,9 @@
 	async function handleRegenerate(index: number) {
 		if (isLoading) return;
 
-		// Find the user message before this assistant message
 		const assistantIndex = index;
 		let userIndex = assistantIndex - 1;
 
-		// Make sure we have a user message
 		while (userIndex >= 0 && messages[userIndex].role !== "user") {
 			userIndex--;
 		}
@@ -191,7 +279,6 @@
 		const userMessage = messages[userIndex];
 		const historyBefore = messages.slice(0, userIndex);
 
-		// Remove the old assistant response and everything after
 		messages = messages.slice(0, assistantIndex);
 
 		isLoading = true;
@@ -203,11 +290,15 @@
 			content: "",
 			timestamp: Date.now(),
 			model: selectedModel,
+			sources: [],
 		};
 		messages = [...messages, assistantMessage];
 
 		try {
-			const fileContext = await getContextFromFiles();
+			const fileContext =
+				selectedMode === "files" ? await getContextFromFiles() : "";
+			const customContext = getCustomInstructionContext();
+			const combinedContext = customContext + fileContext;
 
 			await plugin.api.streamMessage(
 				userMessage.content,
@@ -223,16 +314,37 @@
 				() => {
 					isLoading = false;
 					currentResponse = "";
+					// After completion, ensure reference files are in sources if no API sources
+					const currentMsg = messages.find(
+						(m) => m.id === assistantMessage.id,
+					);
+					if (
+						currentMsg &&
+						(!currentMsg.sources || currentMsg.sources.length === 0)
+					) {
+						const fileSources = getContextFilesAsSources();
+						if (fileSources.length > 0) {
+							upsertMessage({
+								...assistantMessage,
+								content: currentResponse,
+								sources: fileSources,
+							});
+						}
+					}
 				},
-				(error: string) => {
+				(error: string) => handleApiError(error, assistantMessage),
+				combinedContext,
+				selectedMode,
+				(sources: SourceNode[]) => {
+					// Merge API sources with context file sources
+					const fileSources = getContextFilesAsSources();
+					const allSources = [...sources, ...fileSources];
 					upsertMessage({
 						...assistantMessage,
-						content: `Error: ${error}`,
+						content: currentResponse,
+						sources: allSources,
 					});
-					isLoading = false;
-					currentResponse = "";
 				},
-				fileContext,
 			);
 		} catch (error) {
 			console.error("[Logically] Error regenerating:", error);
@@ -252,16 +364,46 @@
 		}
 
 		try {
-			const content = message.content;
+			let content = message.content;
+			content = replaceCitationTokensForNote(content, message.sources);
+
+			// Add sources as hyperlinks if available
+			if (message.sources && message.sources.length > 0) {
+				const sourceLinks: string[] = [];
+				const seen = new Set<string>();
+
+				for (const source of message.sources) {
+					const key = source.fileid || source.url || source.filename;
+					if (seen.has(key)) continue;
+					seen.add(key);
+
+					if (source.filetype === "reference" && source.fileid) {
+						// Internal Obsidian file link
+						sourceLinks.push(`- [[${source.fileid}]]`);
+					} else if (source.url || source.pdfUrl) {
+						// External URL
+						const url = source.pdfUrl || source.url;
+						const title = source.filename || url;
+						sourceLinks.push(`- [${title}](${url})`);
+					} else {
+						// Just filename
+						sourceLinks.push(`- ${source.filename}`);
+					}
+				}
+
+				if (sourceLinks.length > 0) {
+					content +=
+						"\n\n---\n\n**Sources:**\n" + sourceLinks.join("\n");
+				}
+			}
+
 			const editor = app.workspace.activeEditor?.editor;
 
 			if (editor) {
-				// Insert at cursor position
 				const cursor = editor.getCursor();
 				editor.replaceRange(content + "\n\n", cursor);
 				new Notice(`Inserted response into ${activeFile.basename}`);
 			} else {
-				// Fallback: append to file
 				await app.vault.append(activeFile, "\n\n" + content);
 				new Notice(`Appended response to ${activeFile.basename}`);
 			}
@@ -271,23 +413,85 @@
 		}
 	}
 
-	// ─────────────────────────────────────────────────────────────
-	// Drag-and-drop handling for the entire chat area
-	// ─────────────────────────────────────────────────────────────
+	function replaceCitationTokensForNote(
+		content: string,
+		sources: SourceNode[] | undefined,
+	): string {
+		if (!content) return content;
 
+		// Track which citation numbers are used so we can generate footnote definitions
+		const usedCitations = new Set<number>();
+
+		const replacer = (match: string, num: string) => {
+			const index = Number.parseInt(num, 10) - 1;
+			usedCitations.add(index);
+			// Use Obsidian footnote syntax: [^N]
+			return `[^${num}]`;
+		};
+
+		// Handle both variants we see in responses: 【N†source】 and [N†source]
+		const square = /\[(\d+)\s*†\s*source\s*\]/g;
+		const curly = /【(\d+)\s*†\s*source\s*】/g;
+		const curlyAny = /【(\d+)†[^】]*】/g;
+		const squareAny = /\[(\d+)†[^\]]*\]/g;
+
+		let result = content
+			.replace(curly, replacer)
+			.replace(square, replacer)
+			.replace(curlyAny, replacer)
+			.replace(squareAny, replacer);
+
+		// Generate footnote definitions for used citations
+		if (usedCitations.size > 0 && sources && sources.length > 0) {
+			const footnotes: string[] = [];
+			const sortedIndices = Array.from(usedCitations).sort(
+				(a, b) => a - b,
+			);
+
+			for (const index of sortedIndices) {
+				const num = index + 1;
+				const source = sources[index];
+				if (!source) {
+					footnotes.push(`[^${num}]: Source not available`);
+					continue;
+				}
+
+				if (source.filetype === "reference" && source.fileid) {
+					// Obsidian internal link
+					footnotes.push(`[^${num}]: [[${source.fileid}]]`);
+				} else if (source.pdfUrl || source.url) {
+					const url = source.pdfUrl || source.url;
+					const title = source.filename || "Source";
+					footnotes.push(`[^${num}]: [${title}](${url})`);
+				} else {
+					footnotes.push(`[^${num}]: ${source.filename || "Source"}`);
+				}
+			}
+
+			if (footnotes.length > 0) {
+				result += "\n\n" + footnotes.join("\n");
+			}
+		}
+
+		return result;
+	}
+
+	function handleLogout() {
+		isAuthenticated = false;
+		messages = [];
+	}
+
+	// Drag-and-drop handling (only active when mode is "files")
 	function resolveFilePath(raw: string): string | null {
 		if (!app) return null;
 		let target = raw.trim();
 
-		// Extract from wiki link [[file]]
 		const wikiMatch = target.match(/\[\[([^\]|#]+)/);
 		if (wikiMatch) target = wikiMatch[1];
 
-		// Extract from md link [text](file)
 		const mdMatch = target.match(/\[[^\]]*\]\(([^)#]+)/);
 		if (mdMatch) target = mdMatch[1];
 
-		// Handle obsidian:// URIs
 		if (target.startsWith("obsidian://")) {
 			try {
 				const url = new URL(target);
@@ -300,15 +504,11 @@
 			}
 		}
 
-		// Handle app:// URIs (internal Obsidian)
 		if (target.startsWith("app://")) {
 			try {
 				const url = new URL(target);
-				// Path is usually the pathname after the vault identifier
 				let path = decodeURIComponent(url.pathname);
-				// Remove leading slash
 				path = path.replace(/^\//, "");
-				// Skip vault identifier (first segment)
 				const parts = path.split("/");
 				if (parts.length > 1) {
 					target = parts.slice(1).join("/");
@@ -318,16 +518,13 @@
 			}
 		}
 
-		// Strip leading slash
 		target = target.replace(/^\//, "");
 
-		// Try direct path lookup
 		const directFile = app.vault.getAbstractFileByPath(target);
 		if (directFile instanceof TFile && directFile.extension === "md") {
 			return directFile.path;
 		}
 
-		// Try with .md extension
 		if (!target.endsWith(".md")) {
 			const withMd = app.vault.getAbstractFileByPath(target + ".md");
 			if (withMd instanceof TFile) {
@@ -335,7 +532,6 @@
 			}
 		}
 
-		// Try resolving as link
 		const resolved = app.metadataCache.getFirstLinkpathDest(target, "");
 		if (resolved instanceof TFile && resolved.extension === "md") {
 			return resolved.path;
@@ -345,18 +541,16 @@
 	}
 
 	function handleDragOver(e: DragEvent) {
-		// Check if this looks like a file drag
+		// Only allow drag when in files mode
+		if (selectedMode !== "files") return;
 		const dt = e.dataTransfer;
 		if (!dt) return;
-
-		// Accept the drag
 		e.preventDefault();
 		dt.dropEffect = "link";
 		isDraggingOver = true;
 	}
 
 	function handleDragLeave(e: DragEvent) {
-		// Only hide if leaving the container entirely
 		const target = e.relatedTarget as Node | null;
 		const container = e.currentTarget as HTMLElement;
 		if (!target || !container.contains(target)) {
@@ -369,29 +563,19 @@
 		e.stopPropagation();
 		isDraggingOver = false;
 
+		// Only handle drop when in files mode
+		if (selectedMode !== "files") return;
+
 		const dt = e.dataTransfer;
-		if (!dt) {
-			console.log("[Logically] Drop: no dataTransfer");
-			return;
-		}
+		if (!dt) return;
 
-		// Log all available data types
-		console.log("[Logically] Drop event, types:", [...dt.types]);
-		for (const type of dt.types) {
-			console.log(`[Logically] Data[${type}]:`, dt.getData(type));
-		}
-
-		// Collect all text payloads
 		const payloads: string[] = [];
-
-		// Try common types
 		const textPlain = dt.getData("text/plain");
 		if (textPlain) payloads.push(textPlain);
 
 		const textUri = dt.getData("text/uri-list");
 		if (textUri) payloads.push(textUri);
 
-		// Try all types
 		for (const type of dt.types) {
 			const data = dt.getData(type);
 			if (data && !payloads.includes(data)) {
@@ -399,27 +583,17 @@
 			}
 		}
 
-		// Also check files property (for OS file drops)
-		if (dt.files && dt.files.length > 0) {
-			console.log("[Logically] Drop has files:", dt.files.length);
-			// OS file drops won't work for vault files, but log for debug
-		}
-
-		// Parse and resolve paths
 		const allLines = payloads
 			.join("\n")
 			.split(/\r?\n/)
 			.map((s) => s.trim())
 			.filter(Boolean);
-		console.log("[Logically] Lines to resolve:", allLines);
 
 		let addedCount = 0;
 		for (const line of allLines) {
 			if (contextFiles.length >= maxFiles) break;
 
 			const resolved = resolveFilePath(line);
-			console.log(`[Logically] Resolving "${line}" -> "${resolved}"`);
-
 			if (resolved && !contextFiles.includes(resolved)) {
 				contextFiles = [...contextFiles, resolved];
 				addedCount++;
@@ -429,7 +603,7 @@
 		if (addedCount > 0) {
 			plugin.settings.contextFiles = contextFiles;
 			plugin.saveSettings();
-			filesExpanded = true; // Show the files panel
+			filesExpanded = true;
 			new Notice(`Added ${addedCount} file(s) as context`);
 		} else if (allLines.length > 0) {
 			new Notice("Could not resolve dropped file(s)");
@@ -438,19 +612,25 @@
 
 	function handleLogin() {
 		isAuthenticated = true;
-		// Refresh user privileges after login
 		userPrivileges = plugin.settings.userPrivileges ?? [];
+		userEmail = plugin.settings.userEmail ?? "";
+	}
+
+	function handleShowUpgrade(type: "advanced" | "reasoning") {
+		upgradeModalType = type;
+		showUpgradeModal = true;
 	}
 
 	onMount(() => {
 		isAuthenticated = plugin.api.isAuthenticated();
 		selectedModel = plugin.settings.selectedModel;
+		selectedMode = plugin.settings.searchMode ?? "files";
 		contextFiles = plugin.settings.contextFiles ?? [];
 		messages = plugin.settings.chatHistory ?? [];
 		userPrivileges = plugin.settings.userPrivileges ?? [];
+		userEmail = plugin.settings.userEmail ?? "";
 	});
 
-	// Save chat history when messages change
 	$: if (messages.length > 0 && !isLoading) {
 		saveChatHistory();
 	}
@@ -465,7 +645,7 @@
 	on:dragleave={handleDragLeave}
 	on:drop={handleDrop}
 	role="application"
-	aria-label="Logically Research Assistant - drag files here to add context"
+	aria-label="Logically Research Assistant"
 >
 	{#if !isAuthenticated}
 		<LoginPrompt {plugin} on:login={handleLogin} />
@@ -489,13 +669,23 @@
 			<div class="ra-actions">
 				<button
 					type="button"
-					class="ra-btn"
-					class:active={filesExpanded}
-					on:click={() => (filesExpanded = !filesExpanded)}
+					class="ra-btn ra-btn-settings"
+					on:click={() => (showSettingsPanel = true)}
+					title="Settings"
 				>
-					Files {#if contextFiles.length > 0}<span class="ra-badge"
-							>{contextFiles.length}</span
-						>{/if}
+					<svg
+						width="16"
+						height="16"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+					>
+						<circle cx="12" cy="12" r="3"></circle>
+						<path
+							d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
+						></path>
+					</svg>
 				</button>
 				<button
 					type="button"
@@ -520,13 +710,7 @@
 			</div>
 		</header>
 
-		<ModelSelector
-			{selectedModel}
-			{userPrivileges}
-			on:change={(e) => handleModelChange(e.detail)}
-		/>
-
-		{#if filesExpanded}
+		{#if filesExpanded && selectedMode === "files"}
 			<FilePicker
 				bind:this={filePickerRef}
 				{app}
@@ -536,7 +720,7 @@
 			/>
 		{/if}
 
-		{#if isDraggingOver}
+		{#if isDraggingOver && selectedMode === "files"}
 			<div class="drop-overlay">
 				<div class="drop-overlay-content">
 					<svg
@@ -577,10 +761,32 @@
 
 		<ChatInput
 			on:send={(e) => handleSendMessage(e.detail)}
+			on:modelChange={(e) => handleModelChange(e.detail)}
+			on:modeChange={(e) => handleModeChange(e.detail)}
+			on:showUpgrade={(e) => handleShowUpgrade(e.detail)}
+			on:toggleFiles={handleToggleFiles}
 			disabled={isLoading}
+			{selectedModel}
+			{selectedMode}
+			{userPrivileges}
+			{filesExpanded}
+			fileCount={contextFiles.length}
 		/>
 	{/if}
 </div>
+
+<UpgradeModal
+	bind:isOpen={showUpgradeModal}
+	modelType={upgradeModalType}
+	on:close={() => (showUpgradeModal = false)}
+/>
+
+<SettingsPanel
+	{plugin}
+	isOpen={showSettingsPanel}
+	on:close={() => (showSettingsPanel = false)}
+	on:logout={handleLogout}
+/>
 
 <style>
 	.logically-root {
@@ -643,18 +849,8 @@
 		cursor: not-allowed;
 	}
 
-	.ra-btn.active {
-		background: var(--background-modifier-hover);
-		color: var(--text-normal);
-	}
-
-	.ra-badge {
-		background: rgba(25, 128, 230, 0.2);
-		color: #1980e6;
-		font-size: 11px;
-		padding: 1px 5px;
-		border-radius: 8px;
-		font-weight: 600;
+	.ra-btn-settings {
+		padding: 6px;
 	}
 
 	.ra-btn-icon {

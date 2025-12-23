@@ -4,6 +4,16 @@ import type { ResearchAssistantView } from './views/researchAssistantView';
 
 export const VIEW_TYPE_RESEARCH_ASSISTANT = 'logically-research-assistant';
 
+/** Search modes matching backend tools */
+export type SearchMode = 'files' | 'google' | 'semantic';
+
+/** Search mode to backend tool mapping */
+export const SEARCH_MODE_TO_TOOL: Record<SearchMode, string> = {
+	files: 'doc_retrieval',
+	google: 'google',
+	semantic: 'semantic_scholar',
+};
+
 /** Model categories matching the frontend design */
 export enum ModelCategory {
 	standard = 'standard',
@@ -106,6 +116,8 @@ export interface LogicallySettings {
 	showRibbon: boolean;
 	/** Selected AI model */
 	selectedModel: BaseModel;
+	/** Selected search mode */
+	searchMode: SearchMode;
 	/** Free-form notes included as extra context for completions */
 	contextNotes: string;
 	/** Selected vault files to include as context */
@@ -116,6 +128,8 @@ export interface LogicallySettings {
 	userPrivileges: Privilege[];
 	/** User email (cached) */
 	userEmail: string;
+	/** Custom instruction prepended to all prompts */
+	customInstruction: string;
 }
 
 /** Default settings */
@@ -124,12 +138,36 @@ export const DEFAULT_SETTINGS: LogicallySettings = {
 	apiUrl: 'https://api.logically.app',
 	showRibbon: true,
 	selectedModel: 'gemini_flash',
+	searchMode: 'files',
 	contextNotes: '',
 	contextFiles: [],
 	chatHistory: [],
 	userPrivileges: [],
 	userEmail: '',
+	customInstruction: '',
 };
+
+/** Source node from AI response (citation data) */
+export interface SourceNode {
+	/** File ID for uploaded documents */
+	fileid?: string;
+	/** Display name */
+	filename: string;
+	/** Type: 'goog', 'semantic_scholar', or document type */
+	filetype: string;
+	/** URL for web sources */
+	url?: string;
+	/** PDF URL for semantic scholar */
+	pdfUrl?: string;
+	/** Page numbers referenced */
+	pages?: number[];
+	/** Content excerpt */
+	content?: string;
+	/** Citation count for semantic scholar */
+	citationCount?: number;
+	/** Reference count for semantic scholar */
+	referenceCount?: number;
+}
 
 /** Chat message structure */
 export interface ChatMessage {
@@ -138,6 +176,8 @@ export interface ChatMessage {
 	content: string;
 	timestamp: number;
 	model?: string;
+	/** Source nodes from citations (for assistant messages) */
+	sources?: SourceNode[];
 }
 
 /** Chat session structure */

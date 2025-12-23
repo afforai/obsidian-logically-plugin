@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { createEventDispatcher, onMount } from "svelte";
+	import { createEventDispatcher, onMount, tick } from "svelte";
 	import type { App } from "obsidian";
-	import { TFile } from "obsidian";
+	import { TFile, TFolder } from "obsidian";
 
 	export let app: App;
 	export let selectedFiles: string[] = [];
@@ -12,33 +12,78 @@
 	let isOpen = false;
 	let searchQuery = "";
 	let allFiles: TFile[] = [];
-	let filteredFiles: TFile[] = [];
 	let dropdownEl: HTMLDivElement;
 	let debugInfo = "";
+	let isLoading = false;
 
-	function loadFiles() {
+	interface FolderGroup {
+		folder: string;
+		files: TFile[];
+	}
+
+	// Use a reactive statement to compute filtered files
+	$: computedFilteredFiles = computeFilteredFiles(allFiles, searchQuery);
+	$: groupedFiles = groupFilesByFolder(computedFilteredFiles);
+
+	function computeFilteredFiles(files: TFile[], query: string): TFile[] {
+		if (!query.trim()) {
+			return files.slice(0, 100);
+		}
+		const q = query.toLowerCase();
+		return files
+			.filter(
+				(f) =>
+					f.path.toLowerCase().includes(q) ||
+					f.basename.toLowerCase().includes(q),
+			)
+			.slice(0, 100);
+	}
+
+	function groupFilesByFolder(files: TFile[]): FolderGroup[] {
+		const folderMap = new Map<string, TFile[]>();
+
+		for (const file of files) {
+			const folder = getFolder(file.path) || "(root)";
+			const existing = folderMap.get(folder) || [];
+			existing.push(file);
+			folderMap.set(folder, existing);
+		}
+
+		// Sort folders alphabetically, but put (root) first
+		const entries = Array.from(folderMap.entries());
+		entries.sort((a, b) => {
+			if (a[0] === "(root)") return -1;
+			if (b[0] === "(root)") return 1;
+			return a[0].localeCompare(b[0]);
+		});
+
+		return entries.map(([folder, files]) => ({
+			folder,
+			files: files.sort((a, b) => a.basename.localeCompare(b.basename)),
+		}));
+	}
+
+	async function loadFiles() {
 		debugInfo = "";
+		isLoading = true;
 
-		// Check app exists
 		if (!app) {
 			debugInfo = "Error: app is undefined";
 			console.error("[FilePicker] app is undefined");
 			allFiles = [];
-			filteredFiles = [];
+			isLoading = false;
 			return;
 		}
 
-		// Check vault exists
 		if (!app.vault) {
 			debugInfo = "Error: app.vault is undefined";
 			console.error("[FilePicker] app.vault is undefined");
 			allFiles = [];
-			filteredFiles = [];
+			isLoading = false;
 			return;
 		}
 
 		try {
-			// Try different methods to get files
 			let files: TFile[] = [];
 
 			// Method 1: getMarkdownFiles
@@ -77,7 +122,7 @@
 				console.log("[FilePicker] Trying vault.getRoot()");
 				const root = app.vault.getRoot();
 				if (root && root.children) {
-					const walk = (folder: any): TFile[] => {
+					const walk = (folder: TFolder): TFile[] => {
 						const result: TFile[] = [];
 						for (const child of folder.children || []) {
 							if (
@@ -85,7 +130,7 @@
 								child.extension === "md"
 							) {
 								result.push(child);
-							} else if (child.children) {
+							} else if (child instanceof TFolder) {
 								result.push(...walk(child));
 							}
 						}
@@ -103,44 +148,26 @@
 				debugInfo = "No markdown files found";
 				console.warn("[FilePicker] No files found by any method");
 				allFiles = [];
-				filteredFiles = [];
 			} else {
 				debugInfo = `Found ${files.length} files`;
-				// Sort by mtime
+				// Sort by mtime (most recent first)
 				const sorted = [...files].sort((a, b) => {
 					return (b.stat?.mtime ?? 0) - (a.stat?.mtime ?? 0);
 				});
 				allFiles = sorted;
-				// Immediately set filteredFiles
-				filteredFiles = sorted.slice(0, 50);
 				console.log(
-					"[FilePicker] Set filteredFiles:",
-					filteredFiles.length,
+					"[FilePicker] Total files loaded:",
+					allFiles.length,
 				);
 			}
-
-			console.log("[FilePicker] Total files loaded:", allFiles.length);
 		} catch (err) {
 			debugInfo = `Error: ${err}`;
 			console.error("[FilePicker] Error loading files:", err);
 			allFiles = [];
-			filteredFiles = [];
 		}
-	}
 
-	function filterFiles() {
-		if (!searchQuery.trim()) {
-			filteredFiles = allFiles.slice(0, 50);
-		} else {
-			const query = searchQuery.toLowerCase();
-			filteredFiles = allFiles
-				.filter(
-					(f) =>
-						f.path.toLowerCase().includes(query) ||
-						f.basename.toLowerCase().includes(query),
-				)
-				.slice(0, 50);
-		}
+		isLoading = false;
+		await tick();
 	}
 
 	function toggleFile(filePath: string) {
@@ -182,6 +209,14 @@
 		dispatch("change", selectedFiles);
 	}
 
+	async function handleOpenDropdown() {
+		isOpen = !isOpen;
+		if (isOpen) {
+			searchQuery = "";
+			await loadFiles();
+		}
+	}
+
 	onMount(() => {
 		console.log(
 			"[FilePicker] onMount, app:",
@@ -189,33 +224,30 @@
 			"vault:",
 			!!app?.vault,
 		);
-		loadFiles();
 		document.addEventListener("click", handleDocumentClick, true);
 		return () => {
 			document.removeEventListener("click", handleDocumentClick, true);
 		};
 	});
-
-	$: if (searchQuery !== undefined) filterFiles();
 </script>
 
 <div
-	class="file-picker"
+	class="ra-file-picker"
 	bind:this={dropdownEl}
 	role="region"
 	aria-label="Reference files"
 >
-	<div class="picker-header">
-		<span class="picker-label">Reference files</span>
-		<span class="picker-count">{selectedFiles.length}/{maxFiles}</span>
+	<div class="ra-picker-header">
+		<span class="ra-picker-label">Reference files</span>
+		<span class="ra-picker-count">{selectedFiles.length}/{maxFiles}</span>
 	</div>
 
 	{#if selectedFiles.length > 0}
-		<div class="selected-files">
-			{#each selectedFiles as filePath}
-				<div class="selected-file">
+		<div class="ra-selected-files">
+			{#each selectedFiles as filePath (filePath)}
+				<div class="ra-selected-file">
 					<svg
-						class="file-icon"
+						class="ra-file-icon"
 						width="12"
 						height="12"
 						viewBox="0 0 24 24"
@@ -228,12 +260,12 @@
 						></path>
 						<polyline points="14 2 14 8 20 8"></polyline>
 					</svg>
-					<span class="file-name" title={filePath}
+					<span class="ra-file-name" title={filePath}
 						>{getFileName(filePath)}</span
 					>
 					<button
 						type="button"
-						class="remove-btn"
+						class="ra-remove-btn"
 						on:click={() => removeFile(filePath)}
 						title="Remove"
 					>
@@ -256,14 +288,8 @@
 
 	<button
 		type="button"
-		class="add-btn"
-		on:click={() => {
-			isOpen = !isOpen;
-			if (isOpen) {
-				loadFiles();
-				searchQuery = "";
-			}
-		}}
+		class="ra-add-btn"
+		on:click={handleOpenDropdown}
 		disabled={selectedFiles.length >= maxFiles}
 	>
 		<svg
@@ -277,24 +303,29 @@
 			<line x1="12" y1="5" x2="12" y2="19"></line>
 			<line x1="5" y1="12" x2="19" y2="12"></line>
 		</svg>
-		Add vault files
+		Add vault files (Drag and drop works too!)
 	</button>
 
 	{#if isOpen}
-		<div class="dropdown">
+		<div class="ra-dropdown">
 			<input
 				type="text"
-				class="search-input"
+				class="ra-search-input"
 				bind:value={searchQuery}
 				placeholder="Search files..."
-				on:input={filterFiles}
 			/>
-			<div class="meta-row">
-				{debugInfo || `${allFiles.length} markdown files`}
+			<div class="ra-meta-row">
+				{#if isLoading}
+					Loading files...
+				{:else}
+					{debugInfo || `${allFiles.length} markdown files`}
+				{/if}
 			</div>
-			<div class="file-list">
-				{#if filteredFiles.length === 0}
-					<div class="no-files">
+			<div class="ra-file-list">
+				{#if isLoading}
+					<div class="ra-no-files">Loading...</div>
+				{:else if groupedFiles.length === 0}
+					<div class="ra-no-files">
 						{#if allFiles.length === 0}
 							No markdown files found in this vault.
 						{:else}
@@ -302,41 +333,72 @@
 						{/if}
 					</div>
 				{:else}
-					{#each filteredFiles as file}
-						{@const isSelected = selectedFiles.includes(file.path)}
-						<button
-							type="button"
-							class="file-item"
-							class:selected={isSelected}
-							class:disabled={!isSelected &&
-								selectedFiles.length >= maxFiles}
-							on:click={() => toggleFile(file.path)}
-							disabled={!isSelected &&
-								selectedFiles.length >= maxFiles}
-						>
-							<span class="check">{isSelected ? "✓" : ""}</span>
-							<div class="file-info">
-								<span class="file-basename"
-									>{file.basename}</span
+					{#each groupedFiles as group (group.folder)}
+						<div class="ra-folder-group">
+							<div class="ra-folder-header">
+								<svg
+									width="12"
+									height="12"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
 								>
-								{#if getFolder(file.path)}
-									<span class="file-folder"
-										>{getFolder(file.path)}</span
-									>
-								{/if}
+									<path
+										d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
+									></path>
+								</svg>
+								<span>{group.folder}</span>
 							</div>
-						</button>
+							{#each group.files as file (file.path)}
+								{@const isSelected = selectedFiles.includes(
+									file.path,
+								)}
+								<button
+									type="button"
+									class="ra-file-item"
+									class:selected={isSelected}
+									class:disabled={!isSelected &&
+										selectedFiles.length >= maxFiles}
+									on:click={() => toggleFile(file.path)}
+									disabled={!isSelected &&
+										selectedFiles.length >= maxFiles}
+								>
+									<span class="ra-check"
+										>{isSelected ? "✓" : ""}</span
+									>
+									<svg
+										class="ra-file-item-icon"
+										width="12"
+										height="12"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2"
+									>
+										<path
+											d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
+										></path>
+										<polyline points="14 2 14 8 20 8"
+										></polyline>
+									</svg>
+									<span class="ra-file-basename"
+										>{file.basename}</span
+									>
+								</button>
+							{/each}
+						</div>
 					{/each}
 				{/if}
 			</div>
 		</div>
 	{/if}
 
-	<p class="picker-hint">Selected files will be included as context.</p>
+	<p class="ra-picker-hint">Selected files will be included as context.</p>
 </div>
 
 <style>
-	.file-picker {
+	.ra-file-picker {
 		background: var(--background-secondary);
 		border: 1px solid var(--background-modifier-border);
 		border-radius: 8px;
@@ -348,30 +410,30 @@
 		position: relative;
 	}
 
-	.picker-header {
+	.ra-picker-header {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
 	}
 
-	.picker-label {
+	.ra-picker-label {
 		font-size: 12px;
 		font-weight: 600;
 		color: var(--text-normal);
 	}
 
-	.picker-count {
+	.ra-picker-count {
 		font-size: 11px;
 		color: var(--text-muted);
 	}
 
-	.selected-files {
+	.ra-selected-files {
 		display: flex;
 		flex-wrap: wrap;
 		gap: 6px;
 	}
 
-	.selected-file {
+	.ra-selected-file {
 		display: flex;
 		align-items: center;
 		gap: 4px;
@@ -383,18 +445,18 @@
 		max-width: 180px;
 	}
 
-	.file-icon {
+	.ra-file-icon {
 		flex-shrink: 0;
 		opacity: 0.7;
 	}
 
-	.file-name {
+	.ra-file-name {
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
 
-	.remove-btn {
+	.ra-remove-btn {
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -407,11 +469,11 @@
 		opacity: 0.7;
 	}
 
-	.remove-btn:hover {
+	.ra-remove-btn:hover {
 		opacity: 1;
 	}
 
-	.add-btn {
+	.ra-add-btn {
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -426,17 +488,17 @@
 		font-family: inherit;
 	}
 
-	.add-btn:hover:not(:disabled) {
+	.ra-add-btn:hover:not(:disabled) {
 		border-color: var(--interactive-accent);
 		color: var(--interactive-accent);
 	}
 
-	.add-btn:disabled {
+	.ra-add-btn:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
 	}
 
-	.dropdown {
+	.ra-dropdown {
 		position: absolute;
 		top: 100%;
 		left: 0;
@@ -450,14 +512,14 @@
 		overflow: hidden;
 	}
 
-	.meta-row {
+	.ra-meta-row {
 		padding: 6px 10px;
 		font-size: 11px;
 		color: var(--text-muted);
 		border-bottom: 1px solid var(--background-modifier-border);
 	}
 
-	.search-input {
+	.ra-search-input {
 		width: 100%;
 		padding: 8px 10px;
 		border: none;
@@ -469,28 +531,55 @@
 		box-sizing: border-box;
 	}
 
-	.search-input::placeholder {
+	.ra-search-input::placeholder {
 		color: var(--text-muted);
 	}
 
-	.file-list {
-		max-height: 200px;
+	.ra-file-list {
+		max-height: 280px;
 		overflow-y: auto;
 	}
 
-	.no-files {
+	.ra-no-files {
 		padding: 16px;
 		text-align: center;
 		color: var(--text-muted);
 		font-size: 13px;
 	}
 
-	.file-item {
+	/* Folder grouping styles */
+	.ra-folder-group {
+		border-bottom: 1px solid var(--background-modifier-border);
+	}
+
+	.ra-folder-group:last-child {
+		border-bottom: none;
+	}
+
+	.ra-folder-header {
 		display: flex;
 		align-items: center;
-		gap: 8px;
-		width: 100%;
+		gap: 6px;
 		padding: 8px 10px;
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--text-muted);
+		background: var(--background-secondary-alt);
+		position: sticky;
+		top: 0;
+		z-index: 1;
+	}
+
+	.ra-folder-header svg {
+		opacity: 0.7;
+	}
+
+	.ra-file-item {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		width: 100%;
+		padding: 6px 10px 6px 24px;
 		background: none;
 		border: none;
 		text-align: left;
@@ -499,48 +588,39 @@
 		color: var(--text-normal);
 	}
 
-	.file-item:hover:not(:disabled) {
+	.ra-file-item:hover:not(:disabled) {
 		background: var(--background-modifier-hover);
 	}
 
-	.file-item.selected {
+	.ra-file-item.selected {
 		background: rgba(25, 128, 230, 0.1);
 	}
 
-	.file-item:disabled {
+	.ra-file-item:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
 	}
 
-	.check {
-		width: 16px;
-		font-size: 12px;
+	.ra-check {
+		width: 14px;
+		font-size: 11px;
 		color: #1980e6;
+		flex-shrink: 0;
 	}
 
-	.file-info {
-		display: flex;
-		flex-direction: column;
-		gap: 1px;
-		overflow: hidden;
+	.ra-file-item-icon {
+		flex-shrink: 0;
+		opacity: 0.5;
 	}
 
-	.file-basename {
+	.ra-file-basename {
 		font-size: 13px;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
 
-	.file-folder {
-		font-size: 11px;
-		color: var(--text-muted);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.picker-hint {
+	.ra-picker-hint {
 		font-size: 11px;
 		color: var(--text-muted);
 		margin: 0;
