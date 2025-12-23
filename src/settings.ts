@@ -225,6 +225,7 @@ export class LogicallySettingTab extends PluginSettingTab {
 						this.plugin.settings.userToken = '';
 						this.plugin.settings.userPrivileges = [];
 						this.plugin.settings.userEmail = '';
+						this.plugin.settings.selectedModel = 'openai_gpt_5_mini';
 						this.plugin.api.logout();
 						await this.plugin.saveSettings();
 						// Refresh the research assistant view to show login prompt

@@ -479,6 +479,7 @@
 	function handleLogout() {
 		isAuthenticated = false;
 		messages = [];
+		selectedModel = "openai_gpt_5_mini";
 	}
 
 	// Drag-and-drop handling (only active when mode is "files")
@@ -655,6 +656,7 @@
 		isAuthenticated = true;
 		userPrivileges = plugin.settings.userPrivileges ?? [];
 		userEmail = plugin.settings.userEmail ?? "";
+		selectedModel = plugin.settings.selectedModel;
 	}
 
 	function handleShowUpgrade(type: "advanced" | "reasoning") {
