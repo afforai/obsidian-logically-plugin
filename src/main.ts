@@ -1,99 +1,159 @@
-import {App, Editor, MarkdownView, Modal, Notice, Plugin} from 'obsidian';
-import {DEFAULT_SETTINGS, MyPluginSettings, SampleSettingTab} from "./settings";
+import { addIcon, Notice, Plugin, WorkspaceLeaf } from 'obsidian';
+import type { App, PluginManifest } from 'obsidian';
+import type { LogicallyPlugin, LogicallySettings } from './types';
+import { DEFAULT_SETTINGS, VIEW_TYPE_RESEARCH_ASSISTANT } from './types';
+import { LogicallyApi } from './services/logicallyApi';
+import { LogicallySettingTab } from './settings';
+import { ResearchAssistantView } from './views/researchAssistantView';
 
-// Remember to rename these classes and interfaces!
+// Custom icon for Logically
+const LOGICALLY_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+	<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+	<circle cx="12" cy="10" r="1"/>
+	<circle cx="8" cy="10" r="1"/>
+	<circle cx="16" cy="10" r="1"/>
+</svg>`;
 
-export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+/**
+ * Logically Plugin - AI-powered research assistant for Obsidian
+ */
+export default class LogicallyPluginImpl extends Plugin implements LogicallyPlugin {
+	settings: LogicallySettings;
+	api: LogicallyApi;
+	researchAssistantView: ResearchAssistantView | null = null;
+	ribbon: HTMLElement | null = null;
 
-	async onload() {
+	constructor(app: App, manifest: PluginManifest) {
+		super(app, manifest);
+		this.settings = DEFAULT_SETTINGS;
+		this.api = new LogicallyApi(this.settings);
+	}
+
+	async onload(): Promise<void> {
+		console.log('Loading Logically plugin...');
+
 		await this.loadSettings();
+		this.api.updateSettings(this.settings);
 
-		// This creates an icon in the left ribbon.
-		this.addRibbonIcon('dice', 'Sample', (evt: MouseEvent) => {
-			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
-		});
+		// Register custom icon
+		addIcon('logically-icon', LOGICALLY_ICON);
 
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText('Status bar text');
-
-		// This adds a simple command that can be triggered anywhere
-		this.addCommand({
-			id: 'open-modal-simple',
-			name: 'Open modal (simple)',
-			callback: () => {
-				new SampleModal(this.app).open();
+		// Register the research assistant view
+		this.registerView(
+			VIEW_TYPE_RESEARCH_ASSISTANT,
+			(leaf: WorkspaceLeaf) => {
+				this.researchAssistantView = new ResearchAssistantView(leaf, this);
+				return this.researchAssistantView;
 			}
-		});
-		// This adds an editor command that can perform some operation on the current editor instance
+		);
+
+		// Add settings tab
+		this.addSettingTab(new LogicallySettingTab(this.app, this));
+
+		// Add ribbon icon if enabled
+		this.showRibbon(this.settings.showRibbon);
+
+		// Add command to open research assistant
 		this.addCommand({
-			id: 'replace-selected',
-			name: 'Replace selected content',
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				editor.replaceSelection('Sample editor command');
-			}
+			id: 'open-research-assistant',
+			name: 'Open Research Assistant',
+			callback: () => this.activateView(),
 		});
-		// This adds a complex command that can check whether the current state of the app allows execution of the command
+
+		// Add command to toggle research assistant
 		this.addCommand({
-			id: 'open-modal-complex',
-			name: 'Open modal (complex)',
-			checkCallback: (checking: boolean) => {
-				// Conditions to check
-				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (markdownView) {
-					// If checking is true, we're simply "checking" if the command can be run.
-					// If checking is false, then we want to actually perform the operation.
-					if (!checking) {
-						new SampleModal(this.app).open();
-					}
-
-					// This command will only show up in Command Palette when the check function returns true
-					return true;
-				}
-				return false;
-			}
+			id: 'toggle-research-assistant',
+			name: 'Toggle Research Assistant',
+			callback: () => this.toggleView(),
 		});
 
-		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new SampleSettingTab(this.app, this));
-
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			new Notice("Click");
-		});
-
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
-
+		console.log('Logically plugin loaded');
 	}
 
-	onunload() {
+	onunload(): void {
+		// Detach all views of this type
+		this.app.workspace.detachLeavesOfType(VIEW_TYPE_RESEARCH_ASSISTANT);
+
+		// Remove ribbon if it exists
+		if (this.ribbon) {
+			this.ribbon.remove();
+			this.ribbon = null;
+		}
+
+		console.log('Logically plugin unloaded');
 	}
 
-	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<MyPluginSettings>);
+	async loadSettings(): Promise<void> {
+		const data = await this.loadData();
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
 	}
 
-	async saveSettings() {
+	async saveSettings(): Promise<void> {
 		await this.saveData(this.settings);
-	}
-}
-
-class SampleModal extends Modal {
-	constructor(app: App) {
-		super(app);
+		this.api.updateSettings(this.settings);
 	}
 
-	onOpen() {
-		let {contentEl} = this;
-		contentEl.setText('Woah!');
+	/**
+	 * Show or hide the ribbon icon.
+	 */
+	showRibbon(show: boolean): void {
+		if (show) {
+			if (!this.ribbon) {
+				this.ribbon = this.addRibbonIcon(
+					'logically-icon',
+					'Logically Research Assistant',
+					() => this.toggleView()
+				);
+			}
+		} else {
+			if (this.ribbon) {
+				this.ribbon.remove();
+				this.ribbon = null;
+			}
+		}
 	}
 
-	onClose() {
-		const {contentEl} = this;
-		contentEl.empty();
+	/**
+	 * Activate the research assistant view in the right sidebar.
+	 */
+	async activateView(): Promise<void> {
+		const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_RESEARCH_ASSISTANT);
+		
+		if (existing.length > 0) {
+			// View already exists, reveal it
+			const leaf = existing[0];
+			if (leaf) {
+				this.app.workspace.revealLeaf(leaf);
+			}
+			return;
+		}
+
+		// Create new view in right sidebar
+		const rightLeaf = this.app.workspace.getRightLeaf(false);
+		if (rightLeaf) {
+			await rightLeaf.setViewState({
+				type: VIEW_TYPE_RESEARCH_ASSISTANT,
+				active: true,
+			});
+			this.app.workspace.revealLeaf(rightLeaf);
+		}
+	}
+
+	/**
+	 * Toggle the research assistant view.
+	 */
+	async toggleView(): Promise<void> {
+		const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_RESEARCH_ASSISTANT);
+		
+		if (existing.length > 0) {
+			// View exists, close it
+			const leaf = existing[0];
+			if (leaf) {
+				leaf.detach();
+			}
+		} else {
+			// View doesn't exist, open it
+			await this.activateView();
+		}
 	}
 }
