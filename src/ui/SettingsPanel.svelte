@@ -28,11 +28,10 @@
 		plugin.settings.userEmail = "";
 		plugin.settings.userPrivileges = [];
 		plugin.settings.selectedModel = "openai_gpt_5_mini";
-		plugin.settings.chatHistory = [];
 		await plugin.saveSettings();
 		dispatch("logout");
 		dispatch("close");
-		new Notice("Logged out successfully");
+		new Notice("You've been logged out. You can sign back in anytime!");
 	}
 
 	function handleClose() {

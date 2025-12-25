@@ -46,8 +46,12 @@ If it is not listed in the Community Plugins browser, you will need a direct ins
 
 1. Open **Settings → Logically Research Assistant**
 2. Sign in with your Logically email + password (or paste a token under **Advanced → Login with token**)
-3. (Optional) Choose a **Default model**
-4. (Optional) Use **Verify connection** to test your login/API
+3. (Optional) Use **Verify connection** to test your login/API
+
+Notes:
+
+- **Model selection happens inside the chat** (next to the send button). Your choice is remembered.
+- When you **log out**, the plugin resets the selected model back to **GPT-5 mini**.
 
 ## Use
 
@@ -98,8 +102,14 @@ Use **Insert into active note** on an assistant message.
 
 Avoid adding sensitive/private content you don’t want processed remotely.
 
+## Account switching & history
+
+- If you sign in to a **different Logically account** than last time, the plugin will **clear the existing chat history** to protect your privacy.
+- If you log out and sign back in to the **same account**, your chat history is preserved.
+
 ## Troubleshooting
 
+- **Google Sign-In**: the button is visible, but Google Sign-In isn’t available in Obsidian yet. For now, please sign in using **email + password** (you can set this up at https://logically.app under **Account Detail**) or use a **login token** (see **Advanced → Log in with token** in plugin settings).
 - **Login fails**: confirm your credentials work on https://logically.app and try **Verify connection** in settings.
 - **Network / connection errors**: check your internet connection and try **Verify connection**.
 - **Dragging notes doesn’t add them**: only Markdown notes can be added; try dragging a `.md` note from the Obsidian file explorer.

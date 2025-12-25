@@ -657,6 +657,7 @@
 		userPrivileges = plugin.settings.userPrivileges ?? [];
 		userName = plugin.settings.userName ?? "";
 		selectedModel = plugin.settings.selectedModel;
+		messages = plugin.settings.chatHistory ?? [];
 	}
 
 	function handleShowUpgrade(type: "advanced" | "reasoning") {
