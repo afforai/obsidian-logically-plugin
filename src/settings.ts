@@ -1,6 +1,6 @@
 import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
 import type { LogicallyPlugin, LogicallySettings, BaseModel } from './types';
-import { DEFAULT_SETTINGS, AI_MODELS, ModelCategory, VIEW_TYPE_RESEARCH_ASSISTANT } from './types';
+import { DEFAULT_SETTINGS, VIEW_TYPE_RESEARCH_ASSISTANT } from './types';
 import { IS_DEV_BUILD } from './utils/env';
 import { formatAuthError } from './utils/authErrors';
 
@@ -88,56 +88,7 @@ export class LogicallySettingTab extends PluginSettingTab {
 					});
 			});
 
-		// Model selection
-		new Setting(containerEl).setName('AI model').setHeading();
-		
-		new Setting(containerEl)
-			.setName('Default model')
-			.setDesc('Select the AI model to use for research queries.')
-			.addDropdown(dropdown => {
-				// Group models by category
-				const standardModels = AI_MODELS.filter(m => m.category === ModelCategory.standard);
-				const advancedModels = AI_MODELS.filter(m => m.category === ModelCategory.advanced);
-				const reasoningModels = AI_MODELS.filter(m => m.category === ModelCategory.reasoning);
-
-				// Add standard models
-				standardModels.forEach(model => {
-					const label = model.tag ? `${model.name} (${model.tag})` : model.name;
-					dropdown.addOption(model.id, label);
-				});
-
-				// Add advanced models
-				advancedModels.forEach(model => {
-					const label = model.tag ? `${model.name} (${model.tag})` : model.name;
-					dropdown.addOption(model.id, label);
-				});
-
-				// Add reasoning models
-				reasoningModels.forEach(model => {
-					const label = model.tag ? `${model.name} (${model.tag})` : model.name;
-					dropdown.addOption(model.id, label);
-				});
-
-				dropdown
-					.setValue(this.plugin.settings.selectedModel)
-					.onChange(async (value) => {
-						if (value) {
-							this.plugin.settings.selectedModel = value as BaseModel;
-							await this.plugin.saveSettings();
-						}
-					});
-			});
-
-		// Add model info
-		const selectedModel = AI_MODELS.find(m => m.id === this.plugin.settings.selectedModel);
-		if (selectedModel) {
-			containerEl.createEl('p', {
-				text: selectedModel.description,
-				cls: 'setting-item-description logically-model-desc'
-			});
-		}
-
-		// Advanced section
+// Advanced section
 		new Setting(containerEl).setName('Advanced').setHeading();
 
 		this.displayTokenLogin(containerEl);
@@ -147,7 +98,7 @@ export class LogicallySettingTab extends PluginSettingTab {
 		const footerLink = footerEl.createEl('a', { 
 			href: 'https://logically.app',
 		});
-		footerLink.innerText = 'Documentation';
+		footerLink.innerText = 'logically.app';
 		footerLink.setAttribute('target', '_blank');
 	}
 
@@ -159,7 +110,7 @@ export class LogicallySettingTab extends PluginSettingTab {
 
 		new Setting(tokenContainer)
 			.setName('Log in with token')
-			.setDesc('Paste your user token directly to authenticate. Get your token from the web app.')
+			.setDesc('For advanced users: paste your token to log in directly. If you really need this, please reach out to our support team.')
 			.addText(text => {
 				text
 					.setPlaceholder('Paste your token here...')
@@ -199,13 +150,23 @@ export class LogicallySettingTab extends PluginSettingTab {
 							// Token is valid, fetch user plan for privileges
 							const planResult = await this.plugin.api.getUserPlan();
 							
+							const newEmail = (result.data.email || '').toLowerCase();
+							const lastEmail = this.plugin.settings.lastLoggedInEmail;
+							
+							// Check for account switch - wipe history if different user
+							if (lastEmail && lastEmail !== newEmail) {
+								this.plugin.settings.chatHistory = [];
+								new Notice('Welcome! Your previous chat history has been cleared for privacy.', 5000);
+							}
+							
 							this.plugin.settings.userEmail = result.data.email || '';
+							this.plugin.settings.lastLoggedInEmail = newEmail;
 							this.plugin.settings.userPrivileges = planResult.data?.privileges || result.data.privileges || [];
 							this.plugin.api.updateSettings(this.plugin.settings);
 							await this.plugin.saveSettings();
 							this.refreshResearchAssistantView();
 
-							new Notice('Token validated. You are now logged in.');
+							new Notice('✓ Token validated. Welcome back!');
 							this.tokenInput = '';
 							this.display();
 						} else {
@@ -313,7 +274,17 @@ export class LogicallySettingTab extends PluginSettingTab {
 						button.setButtonText('Log in');
 
 						if (result.success && result.data) {
+							const newEmail = this.loginEmail.toLowerCase();
+							const lastEmail = this.plugin.settings.lastLoggedInEmail;
+							
+							// Check for account switch - wipe history if different user
+							if (lastEmail && lastEmail !== newEmail) {
+								this.plugin.settings.chatHistory = [];
+								new Notice('Welcome! Your previous chat history has been cleared for privacy.', 5000);
+							}
+							
 							this.plugin.settings.userToken = result.data.token;
+							this.plugin.settings.lastLoggedInEmail = newEmail;
 							await this.plugin.saveSettings();
 
 							// Fetch user profile to get name
@@ -327,7 +298,7 @@ export class LogicallySettingTab extends PluginSettingTab {
 
 							this.loginEmail = '';
 							this.loginPassword = '';
-							new Notice('Successfully logged in');
+							new Notice('✓ Welcome back! You are now logged in.');
 							this.display();
 						} else {
 							const message = formatAuthError(result.error ?? 'Login failed');

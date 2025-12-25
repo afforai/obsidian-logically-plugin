@@ -132,6 +132,8 @@ export interface LogicallySettings {
 	userName: string;
 	/** Custom instruction prepended to all prompts */
 	customInstruction: string;
+	/** Last successfully logged in email - used to detect account switches and wipe history */
+	lastLoggedInEmail: string;
 }
 
 /** Default settings */
@@ -148,6 +150,7 @@ export const DEFAULT_SETTINGS: LogicallySettings = {
 	userEmail: '',
 	userName: '',
 	customInstruction: '',
+	lastLoggedInEmail: '',
 };
 
 /** Source node from AI response (citation data) */
