@@ -278,9 +278,10 @@ export class LogicallyApi {
 		// Set the tool based on search mode
 		base.tool = SEARCH_MODE_TO_TOOL[searchMode] || 'doc_retrieval';
 		
+		// Send custom instructions directly - backend prepends "Additional instruction:"
 		const notes = (contextNotes ?? '').trim();
 		if (notes) {
-			base.system = `User notes (treat as reference context):\n${notes}`;
+			base.system = notes;
 		}
 		const history = [
 			...conversationHistory.map((msg) => ({ role: msg.role, content: msg.content })),
