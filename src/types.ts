@@ -128,6 +128,8 @@ export interface LogicallySettings {
 	userPrivileges: Privilege[];
 	/** User email (cached) */
 	userEmail: string;
+	/** User display name (cached) */
+	userName: string;
 	/** Custom instruction prepended to all prompts */
 	customInstruction: string;
 }
@@ -144,6 +146,7 @@ export const DEFAULT_SETTINGS: LogicallySettings = {
 	chatHistory: [],
 	userPrivileges: [],
 	userEmail: '',
+	userName: '',
 	customInstruction: '',
 };
 
@@ -218,7 +221,10 @@ export const PRIVILEGES: Readonly<Record<Privilege, Privilege>> = Object.freeze(
 /** User information from API */
 export interface UserInfo {
 	id: string;
+	_id?: string;
 	email: string;
+	first?: string;
+	last?: string;
 	name?: string;
 	privileges: Privilege[];
 }

@@ -31,7 +31,7 @@
 	let isDraggingOver = false;
 	let filePickerRef: FilePicker;
 	let userPrivileges: Privilege[] = plugin.settings.userPrivileges ?? [];
-	let userEmail: string = plugin.settings.userEmail ?? "";
+	let userName: string = plugin.settings.userName ?? "";
 	const maxFiles = 5;
 
 	// Upgrade modal state
@@ -655,7 +655,7 @@
 	function handleLogin() {
 		isAuthenticated = true;
 		userPrivileges = plugin.settings.userPrivileges ?? [];
-		userEmail = plugin.settings.userEmail ?? "";
+		userName = plugin.settings.userName ?? "";
 		selectedModel = plugin.settings.selectedModel;
 	}
 
@@ -664,14 +664,26 @@
 		showUpgradeModal = true;
 	}
 
-	onMount(() => {
+	onMount(async () => {
 		isAuthenticated = plugin.api.isAuthenticated();
 		selectedModel = plugin.settings.selectedModel;
 		selectedMode = plugin.settings.searchMode ?? "files";
 		contextFiles = plugin.settings.contextFiles ?? [];
 		messages = plugin.settings.chatHistory ?? [];
 		userPrivileges = plugin.settings.userPrivileges ?? [];
-		userEmail = plugin.settings.userEmail ?? "";
+		userName = plugin.settings.userName ?? "";
+
+		// Fetch user name if authenticated but name not set
+		if (isAuthenticated && !userName) {
+			const userResult = await plugin.api.getCurrentUser();
+			if (userResult.success && userResult.data) {
+				const user = userResult.data;
+				const nameParts = [user.first, user.last].filter(Boolean);
+				userName = nameParts.join(" ") || plugin.settings.userEmail;
+				plugin.settings.userName = userName;
+				await plugin.saveSettings();
+			}
+		}
 	});
 
 	$: if (messages.length > 0 && !isLoading) {
@@ -698,14 +710,15 @@
 				<svg
 					width="18"
 					height="18"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke="currentColor"
-					stroke-width="2"
+					viewBox="0 0 25 26"
+					fill="currentColor"
 				>
+					<circle cx="17.4406" cy="7.44062" r="3.44062" />
 					<path
-						d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
-					></path>
+						fill-rule="evenodd"
+						clip-rule="evenodd"
+						d="M8.404 21.2031C6.86245 21.2031 6.09168 21.2031 5.50289 20.9031C4.98497 20.6392 4.5639 20.2181 4.3 19.7002C4 19.1114 4 18.3407 4 16.7991V8.12875C4 7.48947 4 7.16984 4.04236 6.90239C4.27554 5.43017 5.43017 4.27554 6.90239 4.04236C7.16984 4 7.48947 4 8.12875 4C8.76802 4 9.08765 4 9.3551 4.04236C10.8273 4.27554 11.982 5.43017 12.2151 6.90239C12.2575 7.16984 12.2575 7.48947 12.2575 8.12875V12.9455H17.073C17.7123 12.9455 18.0319 12.9455 18.2994 12.9879C19.7716 13.2211 20.9262 14.3757 21.1594 15.8479C21.2017 16.1154 21.2017 16.435 21.2017 17.0743C21.2017 17.7136 21.2017 18.0332 21.1594 18.3006C20.9262 19.7729 19.7716 20.9275 18.2994 21.1607C18.0319 21.203 17.7123 21.203 17.073 21.203H12.2575V21.2031H8.404ZM10.8807 12.9455H10.8799V19.8262H6.75195L6.75195 7.43993C6.75195 6.29981 7.6762 5.37556 8.81633 5.37556C9.95645 5.37556 10.8807 6.29981 10.8807 7.43994V12.9455ZM12.2575 19.8272H17.7589C18.899 19.8272 19.8233 18.903 19.8233 17.7628C19.8233 16.6227 18.899 15.6985 17.7589 15.6985H12.2575V19.8272Z"
+					/>
 				</svg>
 				<span>Logically's Research Assistant</span>
 			</div>
@@ -797,6 +810,7 @@
 				{currentResponse}
 				{app}
 				searchMode={selectedMode}
+				{userName}
 				on:insertToNote={(e) => handleInsertToNote(e.detail)}
 				on:deleteFromIndex={(e) => handleDeleteFromIndex(e.detail)}
 				on:regenerate={(e) => handleRegenerate(e.detail)}

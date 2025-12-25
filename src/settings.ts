@@ -315,6 +315,16 @@ export class LogicallySettingTab extends PluginSettingTab {
 						if (result.success && result.data) {
 							this.plugin.settings.userToken = result.data.token;
 							await this.plugin.saveSettings();
+
+							// Fetch user profile to get name
+							const userResult = await this.plugin.api.getCurrentUser();
+							if (userResult.success && userResult.data) {
+								const user = userResult.data;
+								const nameParts = [user.first, user.last].filter(Boolean);
+								this.plugin.settings.userName = nameParts.join(' ') || this.loginEmail;
+								await this.plugin.saveSettings();
+							}
+
 							this.loginEmail = '';
 							this.loginPassword = '';
 							new Notice('Successfully logged in');

@@ -30,6 +30,16 @@
 			await plugin.saveSettings();
 			plugin.api.updateSettings(plugin.settings);
 
+			// Fetch user profile to get name and privileges
+			const userResult = await plugin.api.getCurrentUser();
+			if (userResult.success && userResult.data) {
+				const user = userResult.data;
+				// Build full name from first/last
+				const nameParts = [user.first, user.last].filter(Boolean);
+				plugin.settings.userName = nameParts.join(" ") || user.email;
+				await plugin.saveSettings();
+			}
+
 			// Fetch user privileges after login
 			const planResult = await plugin.api.getUserPlan();
 			if (planResult.success && planResult.data) {

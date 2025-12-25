@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, afterUpdate, onDestroy } from "svelte";
-	import { MarkdownRenderer, Component, type App } from "obsidian";
-	import type { ChatMessage, SearchMode } from "../types";
+	import { MarkdownRenderer, Component, Menu, type App } from "obsidian";
+	import type { ChatMessage, SearchMode, SourceNode } from "../types";
 	import { AI_MODELS } from "../types";
 	import { createEventDispatcher } from "svelte";
 	import SourcesTable from "./SourcesTable.svelte";
@@ -11,6 +11,90 @@
 	export let currentResponse = "";
 	export let app: App;
 	export let searchMode: SearchMode = "files";
+	export let userName: string = "";
+
+	/** Get user initials from name for avatar (e.g., "Shirayuki Nekomata" → "SN") */
+	function getUserInitials(name: string): string {
+		if (!name) return "U";
+		// Split by whitespace to get words
+		const words = name.trim().split(/\s+/).filter(Boolean);
+		if (words.length >= 2) {
+			// Take first letter of first and last word
+			return (words[0][0] + words[words.length - 1][0]).toUpperCase();
+		}
+		if (words.length === 1 && words[0].length >= 2) {
+			// Single word - take first two letters
+			return words[0].slice(0, 2).toUpperCase();
+		}
+		return "U";
+	}
+
+	/**
+	 * Convert citation tokens to Obsidian footnote syntax with definitions.
+	 * Reusable for both copy and insert operations.
+	 */
+	function convertCitationsToFootnotes(
+		content: string,
+		sources: SourceNode[] | undefined,
+	): string {
+		if (!content) return content;
+
+		// Track which citation numbers are used so we can generate footnote definitions
+		const usedCitations = new Set<number>();
+
+		const replacer = (match: string, num: string) => {
+			const index = Number.parseInt(num, 10) - 1;
+			usedCitations.add(index);
+			// Use Obsidian footnote syntax: [^N]
+			return `[^${num}]`;
+		};
+
+		// Handle both variants we see in responses: 【N†source】 and [N†source]
+		const square = /\[(\d+)\s*†\s*source\s*\]/g;
+		const curly = /【(\d+)\s*†\s*source\s*】/g;
+		const curlyAny = /【(\d+)†[^】]*】/g;
+		const squareAny = /\[(\d+)†[^\]]*\]/g;
+
+		let result = content
+			.replace(curly, replacer)
+			.replace(square, replacer)
+			.replace(curlyAny, replacer)
+			.replace(squareAny, replacer);
+
+		// Generate footnote definitions for used citations
+		if (usedCitations.size > 0 && sources && sources.length > 0) {
+			const footnotes: string[] = [];
+			const sortedIndices = Array.from(usedCitations).sort(
+				(a, b) => a - b,
+			);
+
+			for (const index of sortedIndices) {
+				const num = index + 1;
+				const source = sources[index];
+				if (!source) {
+					footnotes.push(`[^${num}]: Source not available`);
+					continue;
+				}
+
+				if (source.filetype === "reference" && source.fileid) {
+					// Obsidian internal link
+					footnotes.push(`[^${num}]: [[${source.fileid}]]`);
+				} else if (source.pdfUrl || source.url) {
+					const url = source.pdfUrl || source.url;
+					const title = source.filename || "Source";
+					footnotes.push(`[^${num}]: [${title}](${url})`);
+				} else {
+					footnotes.push(`[^${num}]: ${source.filename || "Source"}`);
+				}
+			}
+
+			if (footnotes.length > 0) {
+				result += "\n\n" + footnotes.join("\n");
+			}
+		}
+
+		return result;
+	}
 
 	/**
 	 * Convert citation tokens like 【12†source】 to clickable superscript links.
@@ -45,6 +129,7 @@
 		insertToNote: ChatMessage;
 		deleteFromIndex: number;
 		regenerate: number;
+		copy: ChatMessage;
 	}>();
 
 	let listEl: HTMLElement;
@@ -52,6 +137,11 @@
 
 	// Create a Component instance for MarkdownRenderer to avoid memory leaks
 	let markdownComponent: Component;
+
+	// Copy popover state
+	let copyPopoverEl: HTMLElement | null = null;
+	let copyPopoverMessage: ChatMessage | null = null;
+	let copyPopoverPosition = { x: 0, y: 0 };
 
 	function getModelName(modelId: string | undefined): string {
 		if (!modelId) return "AI";
@@ -98,6 +188,95 @@
 
 	function handleRegenerate(index: number) {
 		dispatch("regenerate", index);
+	}
+
+	function handleCopy(message: ChatMessage) {
+		dispatch("copy", message);
+	}
+
+	function showCopyPopover(event: MouseEvent, message: ChatMessage) {
+		const target = event.currentTarget as HTMLElement;
+		const rect = target.getBoundingClientRect();
+		copyPopoverPosition = { x: rect.left, y: rect.bottom + 4 };
+		copyPopoverMessage = message;
+	}
+
+	function hideCopyPopover() {
+		copyPopoverMessage = null;
+	}
+
+	async function copyMessageContent(withFootnotes: boolean) {
+		if (!copyPopoverMessage) return;
+		let content = copyPopoverMessage.content || "";
+		if (withFootnotes) {
+			// Convert citation tokens to Obsidian footnotes with definitions
+			content = convertCitationsToFootnotes(
+				content,
+				copyPopoverMessage.sources,
+			);
+		} else {
+			// Strip citation tokens entirely
+			content = content.replace(/【\d+†[^】]*】/g, "");
+		}
+		await navigator.clipboard.writeText(content);
+		hideCopyPopover();
+	}
+
+	function handleContextMenu(
+		event: MouseEvent,
+		message: ChatMessage,
+		index: number,
+	) {
+		event.preventDefault();
+		const menu = new Menu();
+
+		if (message.role === "user") {
+			menu.addItem((item) =>
+				item
+					.setTitle("Delete")
+					.setIcon("trash-2")
+					.onClick(() => handleDelete(index)),
+			);
+		} else if (message.content) {
+			menu.addItem((item) =>
+				item
+					.setTitle("Insert into note")
+					.setIcon("file-plus")
+					.onClick(() => handleInsertToNote(message)),
+			);
+			menu.addItem((item) =>
+				item
+					.setTitle("Copy with footnotes")
+					.setIcon("copy")
+					.onClick(async () => {
+						const content = convertCitationsToFootnotes(
+							message.content || "",
+							message.sources,
+						);
+						await navigator.clipboard.writeText(content);
+					}),
+			);
+			menu.addItem((item) =>
+				item
+					.setTitle("Copy without citations")
+					.setIcon("copy")
+					.onClick(async () => {
+						const content = (message.content || "").replace(
+							/【\d+†[^】]*】/g,
+							"",
+						);
+						await navigator.clipboard.writeText(content);
+					}),
+			);
+			menu.addItem((item) =>
+				item
+					.setTitle("Regenerate")
+					.setIcon("refresh-cw")
+					.onClick(() => handleRegenerate(index)),
+			);
+		}
+
+		menu.showAtMouseEvent(event);
 	}
 
 	function scrollToBottom() {
@@ -201,26 +380,65 @@
 		</div>
 	{:else}
 		{#each messages as message, index (message.id)}
+			<!-- svelte-ignore a11y-no-static-element-interactions -->
 			<div
-				class="message"
+				class="message-row"
 				class:user={message.role === "user"}
 				class:assistant={message.role === "assistant"}
 				data-msg-id={message.id}
+				on:contextmenu={(e) => handleContextMenu(e, message, index)}
 			>
-				<div class="message-header">
-					<div class="header-left">
-						{#if message.role === "user"}
-							<span class="message-sender">You</span>
-						{:else}
-							<span class="message-sender"
-								>{getModelName(message.model)}</span
-							>
-						{/if}
+				<!-- Avatar -->
+				<div
+					class="message-avatar"
+					class:user-avatar={message.role === "user"}
+					class:assistant-avatar={message.role === "assistant"}
+				>
+					{#if message.role === "user"}
+						<span class="avatar-initials"
+							>{getUserInitials(userName)}</span
+						>
+					{:else}
+						<!-- Logically logo for assistant -->
+						<svg
+							class="logically-logo"
+							viewBox="0 0 25 26"
+							fill="currentColor"
+						>
+							<circle cx="17.4406" cy="7.44062" r="3.44062" />
+							<path
+								fill-rule="evenodd"
+								clip-rule="evenodd"
+								d="M8.404 21.2031C6.86245 21.2031 6.09168 21.2031 5.50289 20.9031C4.98497 20.6392 4.5639 20.2181 4.3 19.7002C4 19.1114 4 18.3407 4 16.7991V8.12875C4 7.48947 4 7.16984 4.04236 6.90239C4.27554 5.43017 5.43017 4.27554 6.90239 4.04236C7.16984 4 7.48947 4 8.12875 4C8.76802 4 9.08765 4 9.3551 4.04236C10.8273 4.27554 11.982 5.43017 12.2151 6.90239C12.2575 7.16984 12.2575 7.48947 12.2575 8.12875V12.9455H17.073C17.7123 12.9455 18.0319 12.9455 18.2994 12.9879C19.7716 13.2211 20.9262 14.3757 21.1594 15.8479C21.2017 16.1154 21.2017 16.435 21.2017 17.0743C21.2017 17.7136 21.2017 18.0332 21.1594 18.3006C20.9262 19.7729 19.7716 20.9275 18.2994 21.1607C18.0319 21.203 17.7123 21.203 17.073 21.203H12.2575V21.2031H8.404ZM10.8807 12.9455H10.8799V19.8262H6.75195L6.75195 7.43993C6.75195 6.29981 7.6762 5.37556 8.81633 5.37556C9.95645 5.37556 10.8807 6.29981 10.8807 7.43994V12.9455ZM12.2575 19.8272H17.7589C18.899 19.8272 19.8233 18.903 19.8233 17.7628C19.8233 16.6227 18.899 15.6985 17.7589 15.6985H12.2575V19.8272Z"
+							/>
+						</svg>
+					{/if}
+				</div>
+				<!-- Message content -->
+				<div class="message">
+					<div class="message-header">
+						<span class="message-sender"
+							>{message.role === "user"
+								? "You"
+								: getModelName(message.model)}</span
+						>
 						<span class="message-time"
 							>{formatTime(message.timestamp)}</span
 						>
 					</div>
-					<div class="header-actions">
+					<div class="message-content">
+						{#if message.role === "user"}
+							{message.content || "..."}
+						{:else}
+							<!-- Rendered via MarkdownRenderer -->
+						{/if}
+					</div>
+					<!-- Sources table for assistant messages with citations -->
+					{#if message.role === "assistant" && message.sources && message.sources.length > 0}
+						<SourcesTable sources={message.sources} {app} />
+					{/if}
+					<!-- Action buttons at bottom-right -->
+					<div class="message-actions">
 						{#if message.role === "user"}
 							<button
 								type="button"
@@ -272,6 +490,35 @@
 							<button
 								type="button"
 								class="action-btn"
+								on:click={(e) => showCopyPopover(e, message)}
+								title="Copy response"
+								disabled={isLoading}
+							>
+								<svg
+									width="14"
+									height="14"
+									viewBox="0 0 16 16"
+									fill="none"
+								>
+									<path
+										d="M13.3333 6H7.33333C6.59695 6 6 6.59695 6 7.33333V13.3333C6 14.0697 6.59695 14.6667 7.33333 14.6667H13.3333C14.0697 14.6667 14.6667 14.0697 14.6667 13.3333V7.33333C14.6667 6.59695 14.0697 6 13.3333 6Z"
+										stroke="currentColor"
+										stroke-width="1.2"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+									/>
+									<path
+										d="M3.33333 10H2.66667C2.31304 10 1.97391 9.85952 1.72386 9.60947C1.47381 9.35943 1.33333 9.0203 1.33333 8.66667V2.66667C1.33333 2.31304 1.47381 1.97391 1.72386 1.72386C1.97391 1.47381 2.31304 1.33333 2.66667 1.33333H8.66667C9.0203 1.33333 9.35943 1.47381 9.60947 1.72386C9.85952 1.97391 10 2.31304 10 2.66667V3.33333"
+										stroke="currentColor"
+										stroke-width="1.2"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+									/>
+								</svg>
+							</button>
+							<button
+								type="button"
+								class="action-btn"
 								on:click={() => handleRegenerate(index)}
 								title="Regenerate response"
 								disabled={isLoading}
@@ -291,19 +538,37 @@
 						{/if}
 					</div>
 				</div>
-				<div class="message-content">
-					{#if message.role === "user"}
-						{message.content || "..."}
-					{:else}
-						<!-- Rendered via MarkdownRenderer -->
-					{/if}
-				</div>
-				<!-- Sources table for assistant messages with citations -->
-				{#if message.role === "assistant" && message.sources && message.sources.length > 0}
-					<SourcesTable sources={message.sources} {app} />
-				{/if}
 			</div>
 		{/each}
+
+		<!-- Copy popover -->
+		{#if copyPopoverMessage}
+			<!-- svelte-ignore a11y-no-static-element-interactions -->
+			<div
+				class="copy-popover-backdrop"
+				on:click={hideCopyPopover}
+				on:keydown={(e) => e.key === "Escape" && hideCopyPopover()}
+			></div>
+			<div
+				class="copy-popover"
+				style="left: {copyPopoverPosition.x}px; top: {copyPopoverPosition.y}px;"
+			>
+				<button
+					type="button"
+					class="copy-popover-item"
+					on:click={() => copyMessageContent(true)}
+				>
+					Copy with footnotes
+				</button>
+				<button
+					type="button"
+					class="copy-popover-item"
+					on:click={() => copyMessageContent(false)}
+				>
+					Copy without citations
+				</button>
+			</div>
+		{/if}
 
 		{#if isLoading && !messages.find((m) => m.content === currentResponse)}
 			<div class="message assistant loading">
@@ -331,7 +596,7 @@
 		flex: 1;
 		display: flex;
 		flex-direction: column;
-		gap: 12px;
+		gap: 4px;
 		overflow-y: auto;
 		padding: 4px 0;
 		min-height: 0;
@@ -391,66 +656,148 @@
 		opacity: 0.7;
 	}
 
+	/* Message row with avatar + bubble layout */
+	.message-row {
+		display: flex;
+		flex-direction: row;
+		align-items: flex-start;
+		gap: 8px;
+		padding: 4px 0;
+	}
+
+	.message-row.user {
+		flex-direction: row-reverse;
+	}
+
+	/* Avatar styling */
+	.message-avatar {
+		width: 28px;
+		height: 28px;
+		flex-shrink: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 50%;
+		margin-top: 2px;
+	}
+
+	.user-avatar {
+		background: var(--interactive-accent);
+	}
+
+	.avatar-initials {
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--text-on-accent);
+		text-transform: uppercase;
+		line-height: 1;
+	}
+
+	.assistant-avatar {
+		background: var(--background-secondary);
+		border: 1px solid var(--background-modifier-border);
+	}
+
+	.assistant-avatar .logically-logo {
+		width: 18px;
+		height: 18px;
+		color: var(--text-normal);
+	}
+
+	/* Message bubble */
 	.message {
 		display: flex;
 		flex-direction: column;
-		padding: 10px 12px;
+		max-width: 85%;
+		padding: 8px 12px;
 		border-radius: 12px;
-		max-width: 95%;
+		position: relative;
 	}
 
-	.message.user {
+	.message-row.user .message {
 		background: var(--interactive-accent);
 		color: var(--text-on-accent);
-		align-self: flex-end;
 		border-bottom-right-radius: 4px;
 	}
 
-	.message.assistant {
+	.message-row.assistant .message {
 		background: var(--background-secondary);
-		align-self: flex-start;
 		border-bottom-left-radius: 4px;
 	}
 
 	.message-header {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
-		font-size: 11px;
+		gap: 8px;
 		margin-bottom: 4px;
 	}
 
-	.header-left {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		opacity: 0.7;
+	.message-sender {
+		font-size: 12px;
+		font-weight: 600;
+		line-height: 1;
 	}
 
-	.header-actions {
+	.message-row.user .message-sender {
+		color: var(--text-on-accent);
+	}
+
+	.message-row.assistant .message-sender {
+		color: var(--text-normal);
+	}
+
+	.message-time {
+		font-size: 10px;
+		line-height: 1;
+		opacity: 0.6;
+	}
+
+	.message-actions {
 		display: flex;
-		gap: 4px;
+		gap: 2px;
+		margin-top: 6px;
+		opacity: 0.5;
+		transition: opacity 0.15s ease;
+	}
+
+	.message-row:hover .message-actions {
+		opacity: 1;
+	}
+
+	.message-row.user .message-actions {
+		justify-content: flex-start;
+	}
+
+	.message-row.assistant .message-actions {
+		justify-content: flex-end;
 	}
 
 	.action-btn {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 24px;
-		height: 24px;
+		width: 22px;
+		height: 22px;
 		padding: 0;
-		background: rgba(0, 0, 0, 0.08);
+		background: transparent;
 		border: none;
-		border-radius: 6px;
+		border-radius: 4px;
 		cursor: pointer;
-		color: var(--text-normal);
-		opacity: 0.7;
+		opacity: 0.6;
 		transition: all 0.15s ease;
 	}
 
+	.message-row.user .action-btn {
+		color: var(--text-on-accent);
+	}
+
+	.message-row.assistant .action-btn {
+		color: var(--text-normal);
+	}
+
 	.action-btn:hover:not(:disabled) {
-		background: rgba(0, 0, 0, 0.15);
 		opacity: 1;
+		background: rgba(0, 0, 0, 0.1);
 	}
 
 	.action-btn:disabled {
@@ -460,56 +807,30 @@
 
 	.action-btn-danger:hover:not(:disabled) {
 		color: var(--text-error);
-		background: rgba(var(--color-red-rgb), 0.2);
-	}
-
-	/* User message buttons: light style on accent background */
-	.message.user .action-btn {
-		background: rgba(255, 255, 255, 0.2);
-		color: var(--text-on-accent);
-	}
-
-	.message.user .action-btn:hover:not(:disabled) {
-		background: rgba(255, 255, 255, 0.35);
-	}
-
-	.message.user .message-content {
-		white-space: pre-wrap;
-	}
-
-	.message.user .header-left {
-		order: 1;
-	}
-
-	.message.user .header-actions {
-		order: 0;
-		margin-right: auto;
-	}
-
-	.message-sender {
-		font-weight: 600;
-	}
-
-	.message-time {
-		opacity: 0.7;
+		background: rgba(var(--color-red-rgb), 0.15);
 	}
 
 	.message-content {
 		font-size: 14px;
 		line-height: 1.5;
 		word-break: break-word;
+		white-space: normal;
+	}
+
+	.message-row.user .message-content {
+		white-space: pre-wrap;
 	}
 
 	/* Markdown content styling */
-	.message.assistant .message-content :global(p) {
+	.message-row.assistant .message-content :global(p) {
 		margin: 0 0 8px 0;
 	}
 
-	.message.assistant .message-content :global(p:last-child) {
+	.message-row.assistant .message-content :global(p:last-child) {
 		margin-bottom: 0;
 	}
 
-	.message.assistant .message-content :global(pre) {
+	.message-row.assistant .message-content :global(pre) {
 		background: var(--background-primary);
 		border-radius: 6px;
 		padding: 10px;
@@ -518,69 +839,69 @@
 		font-size: 13px;
 	}
 
-	.message.assistant .message-content :global(code) {
+	.message-row.assistant .message-content :global(code) {
 		background: var(--background-primary);
 		padding: 2px 4px;
 		border-radius: 3px;
 		font-size: 13px;
 	}
 
-	.message.assistant .message-content :global(pre code) {
+	.message-row.assistant .message-content :global(pre code) {
 		background: none;
 		padding: 0;
 	}
 
-	.message.assistant .message-content :global(ul),
-	.message.assistant .message-content :global(ol) {
+	.message-row.assistant .message-content :global(ul),
+	.message-row.assistant .message-content :global(ol) {
 		margin: 8px 0;
 		padding-left: 20px;
 	}
 
-	.message.assistant .message-content :global(li) {
+	.message-row.assistant .message-content :global(li) {
 		margin: 4px 0;
 	}
 
-	.message.assistant .message-content :global(h1),
-	.message.assistant .message-content :global(h2),
-	.message.assistant .message-content :global(h3),
-	.message.assistant .message-content :global(h4) {
+	.message-row.assistant .message-content :global(h1),
+	.message-row.assistant .message-content :global(h2),
+	.message-row.assistant .message-content :global(h3),
+	.message-row.assistant .message-content :global(h4) {
 		margin: 12px 0 8px 0;
 		font-weight: 600;
 	}
 
-	.message.assistant .message-content :global(h1) {
+	.message-row.assistant .message-content :global(h1) {
 		font-size: 18px;
 	}
-	.message.assistant .message-content :global(h2) {
+	.message-row.assistant .message-content :global(h2) {
 		font-size: 16px;
 	}
-	.message.assistant .message-content :global(h3) {
+	.message-row.assistant .message-content :global(h3) {
 		font-size: 15px;
 	}
-	.message.assistant .message-content :global(h4) {
+	.message-row.assistant .message-content :global(h4) {
 		font-size: 14px;
 	}
 
-	.message.assistant .message-content :global(blockquote) {
+	.message-row.assistant .message-content :global(blockquote) {
 		border-left: 3px solid var(--text-muted);
 		margin: 8px 0;
 		padding-left: 12px;
 		color: var(--text-muted);
 	}
 
-	.message.assistant .message-content :global(table) {
+	.message-row.assistant .message-content :global(table) {
 		border-collapse: collapse;
 		margin: 8px 0;
 		font-size: 13px;
 	}
 
-	.message.assistant .message-content :global(th),
-	.message.assistant .message-content :global(td) {
+	.message-row.assistant .message-content :global(th),
+	.message-row.assistant .message-content :global(td) {
 		border: 1px solid var(--background-modifier-border);
 		padding: 6px 10px;
 	}
 
-	.message.assistant .message-content :global(th) {
+	.message-row.assistant .message-content :global(th) {
 		background: var(--background-primary);
 		font-weight: 600;
 	}
@@ -623,13 +944,13 @@
 	}
 
 	/* Citation link styling */
-	.message.assistant .message-content :global(.ra-citation-link) {
+	.message-row.assistant .message-content :global(.ra-citation-link) {
 		font-size: 10px;
 		vertical-align: super;
 		margin: 0 1px;
 	}
 
-	.message.assistant .message-content :global(.ra-citation-link a) {
+	.message-row.assistant .message-content :global(.ra-citation-link a) {
 		color: var(--interactive-accent);
 		text-decoration: none;
 		font-weight: 600;
@@ -639,8 +960,44 @@
 		transition: all 0.15s ease;
 	}
 
-	.message.assistant .message-content :global(.ra-citation-link a:hover) {
+	.message-row.assistant .message-content :global(.ra-citation-link a:hover) {
 		background: var(--interactive-accent);
 		color: var(--text-on-accent);
+	}
+
+	/* Copy popover */
+	.copy-popover-backdrop {
+		position: fixed;
+		inset: 0;
+		z-index: 999;
+	}
+
+	.copy-popover {
+		position: fixed;
+		z-index: 1000;
+		background: var(--background-primary);
+		border: 1px solid var(--background-modifier-border);
+		border-radius: 8px;
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+		padding: 4px;
+		min-width: 180px;
+	}
+
+	.copy-popover-item {
+		display: block;
+		width: 100%;
+		padding: 8px 12px;
+		background: none;
+		border: none;
+		border-radius: 4px;
+		text-align: left;
+		font-size: 13px;
+		color: var(--text-normal);
+		cursor: pointer;
+		transition: background 0.1s ease;
+	}
+
+	.copy-popover-item:hover {
+		background: var(--background-modifier-hover);
 	}
 </style>

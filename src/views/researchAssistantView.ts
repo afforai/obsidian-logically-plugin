@@ -25,7 +25,7 @@ export class ResearchAssistantView extends ItemView {
 	}
 
 	getIcon(): string {
-		return 'message-circle';
+		return 'logically-icon';
 	}
 
 	async onOpen(): Promise<void> {
