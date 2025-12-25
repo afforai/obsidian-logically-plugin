@@ -19,7 +19,7 @@
 		"research",
 		"ai"
 	],
-	"license": "MIT",
+	"license": "SEE LICENSE IN LICENSE.md",
 	"devDependencies": {
 		"@eslint/js": "9.30.1",
 		"@rollup/plugin-commonjs": "^28.0.2",

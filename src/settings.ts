@@ -1,5 +1,5 @@
 import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
-import type { LogicallyPlugin, LogicallySettings, BaseModel } from './types';
+import type { LogicallyPlugin, LogicallySettings } from './types';
 import { DEFAULT_SETTINGS, VIEW_TYPE_RESEARCH_ASSISTANT } from './types';
 import { IS_DEV_BUILD } from './utils/env';
 import { formatAuthError } from './utils/authErrors';
@@ -98,6 +98,7 @@ export class LogicallySettingTab extends PluginSettingTab {
 		const footerLink = footerEl.createEl('a', { 
 			href: 'https://logically.app',
 		});
+		// eslint-disable-next-line obsidianmd/ui/sentence-case -- brand name
 		footerLink.innerText = 'logically.app';
 		footerLink.setAttribute('target', '_blank');
 	}
@@ -166,6 +167,7 @@ export class LogicallySettingTab extends PluginSettingTab {
 							await this.plugin.saveSettings();
 							this.refreshResearchAssistantView();
 
+							// eslint-disable-next-line obsidianmd/ui/sentence-case -- toast notification
 							new Notice('✓ Token validated. Welcome back!');
 							this.tokenInput = '';
 							this.display();
@@ -298,6 +300,7 @@ export class LogicallySettingTab extends PluginSettingTab {
 
 							this.loginEmail = '';
 							this.loginPassword = '';
+							// eslint-disable-next-line obsidianmd/ui/sentence-case -- toast notification
 							new Notice('✓ Welcome back! You are now logged in.');
 							this.display();
 						} else {
