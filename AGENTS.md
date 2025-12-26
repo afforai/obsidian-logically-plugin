@@ -89,13 +89,6 @@ obsidian-logically-plugin/
 ├── pnpm-lock.yaml                 # Lockfile (canonical)
 ├── version-bump.mjs               # Version bumper script
 │
-├── .ai/                           # Durable context vault (gitignored)
-│   ├── workspace-map.md           # Navigation & structure
-│   ├── knowledge-base.md          # Features & behavior
-│   ├── todo.md                    # Feature checklist
-│   ├── decisions.md               # Architecture decisions (ADR)
-│   └── session-log.md             # Activity log
-│
 └── docs/
     ├── README.md                  # User guide (install, setup, usage)
     ├── DEVELOPMENT.md             # Developer setup & release process
@@ -371,14 +364,13 @@ This plugin supports mobile (`isDesktopOnly: false`), but some features may not 
 ## Contributor Do's & Don'ts
 
 ### Do
-✅ Keep `main.ts` under 150 lines (delegate logic to services/UI).  
-✅ Use `services/logicallyApi.ts` for all API calls.  
-✅ Define types in `src/types.ts` (central registry).  
-✅ Use `this.register*` helpers for cleanup (registerEvent, registerDomEvent, registerInterval).  
-✅ Test locally: `pnpm dev` + copy to vault + reload Obsidian.  
-✅ Run `pnpm lint` before pushing.  
-✅ Update `.ai/*` vault docs when making significant changes.  
-✅ Use TypeScript `strict: true` (no implicit any).  
+✅ Keep `main.ts` under 150 lines (delegate logic to services/UI).
+✅ Use `services/logicallyApi.ts` for all API calls.
+✅ Define types in `src/types.ts` (central registry).
+✅ Use `this.register*` helpers for cleanup (registerEvent, registerDomEvent, registerInterval).
+✅ Test locally: `pnpm dev` + copy to vault + reload Obsidian.
+✅ Run `pnpm lint` before pushing.
+✅ Use TypeScript `strict: true` (no implicit any).
 ✅ Provide sensible defaults in settings.
 
 ### Don't
@@ -399,7 +391,6 @@ Before submitting a PR:
 - [ ] `pnpm lint` passes (no ESLint warnings)
 - [ ] Tested locally in Obsidian (dev vault)
 - [ ] No hardcoded paths or secrets
-- [ ] Updated `.ai/session-log.md` with summary of changes
 - [ ] Updated types in `src/types.ts` if adding new fields
 - [ ] Preserved backward compatibility (no breaking changes to public APIs)
 
