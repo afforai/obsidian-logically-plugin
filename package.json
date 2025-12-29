@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-logically-plugin",
-	"version": "1.0.0",
+	"version": "0.1.0",
 	"description": "AI-powered research assistant for Obsidian, integrated with Logically (logically.app)",
 	"main": "main.js",
 	"type": "module",

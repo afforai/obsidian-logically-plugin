@@ -1,4 +1,7 @@
-# Logically Research Assistant (Obsidian)
+# Logically Research Assistant (Obsidian) — Beta
+
+> **We're in beta!** Thank you for trying out the Logically Research Assistant. We'd love your feedback on features, bugs, and ideas for improvement. Please reach out to us at [support@logically.app](mailto:support@logically.app) or visit [logically.app](https://logically.app) to share your thoughts.
+
 [![Release](https://github.com/afforai/obsidian-logically-plugin/actions/workflows/release.yml/badge.svg)](https://github.com/afforai/obsidian-logically-plugin/actions/workflows/release.yml)
 [![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/afforai/obsidian-logically-plugin?style=flat&sort=semver)](https://github.com/afforai/obsidian-logically-plugin/releases/latest)
 ![GitHub All Releases](https://img.shields.io/github/downloads/afforai/obsidian-logically-plugin/total?style=flat)
