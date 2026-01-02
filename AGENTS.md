@@ -1,8 +1,8 @@
-# Logically Research Assistant (Obsidian Plugin)
+# Logically AI Research Assistant (Obsidian Plugin)
 
 ## Project Overview
 
-**Logically Research Assistant** is an Obsidian community plugin that integrates AI-powered research capabilities directly into the editor.
+**Logically AI Research Assistant** is an Obsidian community plugin that integrates AI-powered research capabilities directly into the editor.
 
 - **Plugin ID**: `logically` (immutable after release)
 - **Entry point**: `src/main.ts` (LogicallyPluginImpl extends Plugin) → compiled to `main.js`
@@ -117,7 +117,7 @@ obsidian-logically-plugin/
 ```json
 {
   "id": "logically",
-  "name": "Logically Research Assistant",
+  "name": "Logically AI Research Assistant",
   "version": "1.0.0",
   "minAppVersion": "1.0.0",
   "description": "AI-powered research assistant integrated with Logically (logically.app)",
@@ -143,7 +143,7 @@ See [canonical Obsidian validation rules](https://github.com/obsidianmd/obsidian
 1. **Build**: `pnpm build`
 2. **Install**: Copy `main.js`, `manifest.json`, `styles.css` to `<VaultPath>/.obsidian/plugins/logically/`
 3. **Reload**: Close and reopen Obsidian, or toggle plugin in **Settings → Community plugins**
-4. **Test**: Open Research Assistant via ribbon icon or command palette
+4. **Test**: Open AI research assistant via ribbon icon or command palette
 
 ### Automated Testing
 
@@ -253,7 +253,7 @@ See [README.md](README.md) **Privacy & Data** section for user-facing guidance.
 **In-app text** (buttons, headings, labels):
 - Sentence case for headings: "Research Assistant", "Custom Instruction"
 - Action-oriented imperatives: "Send Message", "Insert into Note", "Add Files"
-- Use **bold** for UI labels: **Settings → Logically Research Assistant**
+- Use **bold** for UI labels: **Settings → Logically AI Research Assistant**
 - Use arrow notation for navigation paths
 - Keep strings short and jargon-free (e.g., "Models" instead of "Language Models")
 

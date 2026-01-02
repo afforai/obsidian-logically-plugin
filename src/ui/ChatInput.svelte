@@ -264,7 +264,9 @@
 					{/if}
 				</button>
 			{/if}
+		</div>
 
+		<div class="ra-input-actions">
 			<!-- Model Selector -->
 			<div class="ra-selector-wrapper">
 				<button
@@ -277,9 +279,9 @@
 					type="button"
 					{disabled}
 				>
-					<span class="ra-selector-text"
-						>{selectedModelInfo?.name ?? "Select model"}</span
-					>
+					<span class="ra-selector-text">
+						{selectedModelInfo?.name ?? "Select model"}
+					</span>
 					{#if selectedModelInfo?.tag}
 						<span class="ra-model-tag">{selectedModelInfo.tag}</span
 						>
@@ -335,9 +337,9 @@
 							<div class="ra-section-header">
 								<span class="ra-crown">👑</span> Advanced AI
 								models
-								{#if !hasAdvancedAccess}<span class="ra-lock"
-										>🔒</span
-									>{/if}
+								{#if !hasAdvancedAccess}
+									<span class="ra-lock">🔒</span>
+								{/if}
 							</div>
 							{#each advancedModels as model (model.id)}
 								<button
@@ -370,9 +372,9 @@
 							<div class="ra-section-header">
 								<span class="ra-crown">👑</span> Reasoning AI
 								models
-								{#if !hasReasoningAccess}<span class="ra-lock"
-										>🔒</span
-									>{/if}
+								{#if !hasReasoningAccess}
+									<span class="ra-lock">🔒</span>
+								{/if}
 							</div>
 							{#each reasoningModels as model (model.id)}
 								<button
@@ -402,47 +404,47 @@
 					</div>
 				{/if}
 			</div>
-		</div>
 
-		<button
-			type="button"
-			class="ra-send-btn"
-			on:click={handleSubmit}
-			disabled={disabled || !inputValue.trim()}
-			title="Send message"
-		>
-			{#if disabled}
-				<svg
-					class="ra-spinner"
-					width="18"
-					height="18"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke="currentColor"
-					stroke-width="2"
-				>
-					<circle
-						cx="12"
-						cy="12"
-						r="10"
-						stroke-dasharray="32"
-						stroke-dashoffset="12"
-					></circle>
-				</svg>
-			{:else}
-				<svg
-					width="18"
-					height="18"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke="currentColor"
-					stroke-width="2"
-				>
-					<line x1="22" y1="2" x2="11" y2="13"></line>
-					<polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-				</svg>
-			{/if}
-		</button>
+			<button
+				type="button"
+				class="ra-send-btn"
+				on:click={handleSubmit}
+				disabled={disabled || !inputValue.trim()}
+				title="Send message"
+			>
+				{#if disabled}
+					<svg
+						class="ra-spinner"
+						width="18"
+						height="18"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+					>
+						<circle
+							cx="12"
+							cy="12"
+							r="10"
+							stroke-dasharray="32"
+							stroke-dashoffset="12"
+						></circle>
+					</svg>
+				{:else}
+					<svg
+						width="18"
+						height="18"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+					>
+						<line x1="22" y1="2" x2="11" y2="13"></line>
+						<polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+					</svg>
+				{/if}
+			</button>
+		</div>
 	</div>
 
 	<p class="ra-hint">
@@ -505,6 +507,15 @@
 		align-items: center;
 		gap: 6px;
 		flex-wrap: wrap;
+		flex: 1;
+		min-width: 0;
+	}
+
+	.ra-input-actions {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		flex-shrink: 0;
 	}
 
 	.ra-selector-wrapper {
@@ -617,6 +628,8 @@
 		min-width: 260px;
 		max-height: min(70vh, 400px);
 		overflow-y: auto;
+		right: 0;
+		left: auto;
 	}
 
 	.ra-dropdown-item {

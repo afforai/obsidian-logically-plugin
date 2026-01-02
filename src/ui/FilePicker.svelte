@@ -24,6 +24,7 @@
 	// Use a reactive statement to compute filtered files
 	$: computedFilteredFiles = computeFilteredFiles(allFiles, searchQuery);
 	$: groupedFiles = groupFilesByFolder(computedFilteredFiles);
+	$: hasMaxFilesLimit = Number.isFinite(maxFiles);
 
 	function computeFilteredFiles(files: TFile[], query: string): TFile[] {
 		if (!query.trim()) {
@@ -217,6 +218,18 @@
 		}
 	}
 
+	export async function openDropdown() {
+		if (!isOpen) {
+			isOpen = true;
+			searchQuery = "";
+			await loadFiles();
+			await tick();
+		}
+		const input =
+			dropdownEl?.querySelector<HTMLInputElement>(".ra-search-input");
+		input?.focus();
+	}
+
 	onMount(() => {
 		console.log(
 			"[FilePicker] onMount, app:",
@@ -239,7 +252,10 @@
 >
 	<div class="ra-picker-header">
 		<span class="ra-picker-label">Reference files</span>
-		<span class="ra-picker-count">{selectedFiles.length}/{maxFiles}</span>
+		<span class="ra-picker-count">
+			{selectedFiles.length}{#if hasMaxFilesLimit}/{maxFiles}{:else}
+				/ Unlimited{/if}
+		</span>
 	</div>
 
 	{#if selectedFiles.length > 0}

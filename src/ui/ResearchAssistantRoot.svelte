@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from "svelte";
+	import { onMount, tick } from "svelte";
 	import { Notice, TFile, type App } from "obsidian";
 	import type {
 		LogicallyPlugin,
@@ -9,7 +9,7 @@
 		SearchMode,
 		SourceNode,
 	} from "../types";
-	import { AI_MODELS } from "../types";
+	import { AI_MODELS, PRIVILEGES } from "../types";
 	import ChatInput from "./ChatInput.svelte";
 	import MessageList from "./MessageList.svelte";
 	import LoginPrompt from "./LoginPrompt.svelte";
@@ -29,10 +29,37 @@
 	let contextFiles: string[] = plugin.settings.contextFiles ?? [];
 	let filesExpanded = false;
 	let isDraggingOver = false;
-	let filePickerRef: FilePicker;
+	let filePickerRef: FilePicker | null = null;
 	let userPrivileges: Privilege[] = plugin.settings.userPrivileges ?? [];
 	let userName: string = plugin.settings.userName ?? "";
-	const maxFiles = 5;
+	let maxFiles = 5;
+	let lastMaxFiles = maxFiles;
+
+	const FREE_MAX_FILES = 5;
+	const PAID_MAX_FILES = 20;
+
+	function computeMaxFiles(privileges: Privilege[]): number {
+		const paidPrivileges: Privilege[] = [
+			PRIVILEGES.advanced_models,
+			PRIVILEGES.reasoning_models,
+			PRIVILEGES.team,
+			PRIVILEGES.ltd_organization,
+			PRIVILEGES.admin,
+		];
+		const isPaid = privileges.some((p) => paidPrivileges.includes(p));
+		return isPaid ? PAID_MAX_FILES : FREE_MAX_FILES;
+	}
+
+	$: maxFiles = computeMaxFiles(userPrivileges);
+
+	$: if (maxFiles !== lastMaxFiles) {
+		if (contextFiles.length > maxFiles) {
+			contextFiles = contextFiles.slice(0, maxFiles);
+			plugin.settings.contextFiles = contextFiles;
+			void plugin.saveSettings();
+		}
+		lastMaxFiles = maxFiles;
+	}
 
 	// Upgrade modal state
 	let showUpgradeModal = false;
@@ -95,6 +122,13 @@
 		filesExpanded = !filesExpanded;
 	}
 
+	async function handleOpenFilePicker() {
+		if (selectedMode !== "files") return;
+		filesExpanded = true;
+		await tick();
+		await filePickerRef?.openDropdown?.();
+	}
+
 	async function getContextFromFiles(): Promise<string> {
 		if (contextFiles.length === 0) return "";
 
@@ -147,7 +181,7 @@
 		if (error.includes("query_quota") || error.includes(".query_quota")) {
 			upsertMessage({
 				...assistantMessage,
-				content: `**You've reached your free query limit** 🚫\n\nYou've used all your free queries for this period. To continue using Logically's Research Assistant:\n\n- **Upgrade to a paid plan** for unlimited queries\n- Visit [logically.app/pricing](https://logically.app/pricing) to see available plans\n\nYour free quota will reset at the start of the next billing period.`,
+				content: `**You've reached your free query limit**\n\nYou've used all your free queries for this period. To continue using Logically's AI research assistant:\n\n- **Upgrade to a paid plan** for unlimited queries\n- Visit [logically.app/pricing](https://logically.app/pricing) to see available plans\n\nYour free quota will reset at the start of the next billing period.`,
 			});
 		} else {
 			upsertMessage({
@@ -252,7 +286,7 @@
 		messages = [];
 		currentResponse = "";
 		plugin.settings.chatHistory = [];
-		plugin.saveSettings();
+		void plugin.saveSettings();
 	}
 
 	function handleDeleteFromIndex(index: number) {
@@ -267,7 +301,9 @@
 		const assistantIndex = index;
 		let userIndex = assistantIndex - 1;
 
-		while (userIndex >= 0 && messages[userIndex].role !== "user") {
+		while (userIndex >= 0) {
+			const msg = messages[userIndex];
+			if (msg && msg.role === "user") break;
 			userIndex--;
 		}
 
@@ -277,6 +313,10 @@
 		}
 
 		const userMessage = messages[userIndex];
+		if (!userMessage || userMessage.role !== "user") {
+			new Notice("No user message found to regenerate from");
+			return;
+		}
 		const historyBefore = messages.slice(0, userIndex);
 
 		messages = messages.slice(0, assistantIndex);
@@ -488,10 +528,10 @@
 		let target = raw.trim();
 
 		const wikiMatch = target.match(/\[\[([^\]|#]+)/);
-		if (wikiMatch) target = wikiMatch[1];
+		if (wikiMatch?.[1]) target = wikiMatch[1];
 
 		const mdMatch = target.match(/\[[^\]]*\]\(([^)#]+)/);
-		if (mdMatch) target = mdMatch[1];
+		if (mdMatch?.[1]) target = mdMatch[1];
 
 		if (target.startsWith("obsidian://")) {
 			try {
@@ -621,7 +661,7 @@
 		if (addedFiles.length > 0) {
 			contextFiles = [...contextFiles, ...addedFiles];
 			plugin.settings.contextFiles = contextFiles;
-			plugin.saveSettings();
+			void plugin.saveSettings();
 			filesExpanded = true;
 			new Notice(`Added ${addedFiles.length} file(s) as context`);
 		}
@@ -701,7 +741,7 @@
 	on:dragleave={handleDragLeave}
 	on:drop={handleDrop}
 	role="application"
-	aria-label="Logically Research Assistant"
+	aria-label="Logically AI research assistant"
 >
 	{#if !isAuthenticated}
 		<LoginPrompt {plugin} on:login={handleLogin} />
@@ -721,7 +761,7 @@
 						d="M8.404 21.2031C6.86245 21.2031 6.09168 21.2031 5.50289 20.9031C4.98497 20.6392 4.5639 20.2181 4.3 19.7002C4 19.1114 4 18.3407 4 16.7991V8.12875C4 7.48947 4 7.16984 4.04236 6.90239C4.27554 5.43017 5.43017 4.27554 6.90239 4.04236C7.16984 4 7.48947 4 8.12875 4C8.76802 4 9.08765 4 9.3551 4.04236C10.8273 4.27554 11.982 5.43017 12.2151 6.90239C12.2575 7.16984 12.2575 7.48947 12.2575 8.12875V12.9455H17.073C17.7123 12.9455 18.0319 12.9455 18.2994 12.9879C19.7716 13.2211 20.9262 14.3757 21.1594 15.8479C21.2017 16.1154 21.2017 16.435 21.2017 17.0743C21.2017 17.7136 21.2017 18.0332 21.1594 18.3006C20.9262 19.7729 19.7716 20.9275 18.2994 21.1607C18.0319 21.203 17.7123 21.203 17.073 21.203H12.2575V21.2031H8.404ZM10.8807 12.9455H10.8799V19.8262H6.75195L6.75195 7.43993C6.75195 6.29981 7.6762 5.37556 8.81633 5.37556C9.95645 5.37556 10.8807 6.29981 10.8807 7.43994V12.9455ZM12.2575 19.8272H17.7589C18.899 19.8272 19.8233 18.903 19.8233 17.7628C19.8233 16.6227 18.899 15.6985 17.7589 15.6985H12.2575V19.8272Z"
 					/>
 				</svg>
-				<span>Logically's Research Assistant</span>
+				<span>Logically's AI Research Assistant</span>
 			</div>
 			<div class="ra-actions">
 				<button
@@ -815,6 +855,7 @@
 				on:insertToNote={(e) => handleInsertToNote(e.detail)}
 				on:deleteFromIndex={(e) => handleDeleteFromIndex(e.detail)}
 				on:regenerate={(e) => handleRegenerate(e.detail)}
+				on:openFilePicker={handleOpenFilePicker}
 			/>
 		</div>
 

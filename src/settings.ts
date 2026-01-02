@@ -36,7 +36,7 @@ export class LogicallySettingTab extends PluginSettingTab {
 
 		// Header
 		new Setting(containerEl)
-			.setName('Research assistant')
+			.setName('AI research assistant')
 			.setHeading();
 
 		containerEl.createEl('p', {

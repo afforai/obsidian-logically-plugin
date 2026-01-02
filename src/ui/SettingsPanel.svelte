@@ -12,15 +12,25 @@
 	}>();
 
 	let customInstruction = plugin.settings.customInstruction ?? "";
+	let savedInstruction = (plugin.settings.customInstruction ?? "").trim();
 	let isSaving = false;
 	let textareaEl: HTMLTextAreaElement;
 
+	$: trimmedInstruction = customInstruction.trim();
+	$: canSave = !isSaving && trimmedInstruction !== savedInstruction;
+
 	async function handleSaveInstruction() {
+		if (!canSave) return;
 		isSaving = true;
-		plugin.settings.customInstruction = customInstruction;
+		plugin.settings.customInstruction = trimmedInstruction;
 		await plugin.saveSettings();
 		isSaving = false;
-		new Notice("Custom instruction saved");
+		savedInstruction = trimmedInstruction;
+		new Notice(
+			trimmedInstruction
+				? "Custom instructions saved"
+				: "Custom instructions cleared",
+		);
 	}
 
 	async function handleLogout() {
@@ -60,6 +70,7 @@
 
 	$: if (isOpen) {
 		customInstruction = plugin.settings.customInstruction ?? "";
+		savedInstruction = (plugin.settings.customInstruction ?? "").trim();
 	}
 </script>
 
@@ -130,27 +141,26 @@
 
 				<!-- Custom Instruction Section -->
 				<div class="ra-settings-section">
-					<div class="ra-section-title">Custom Instruction</div>
+					<div class="ra-section-title">Custom instructions</div>
 					<p class="ra-section-desc">
-						Add custom instructions that will be included with every
-						message you send. Use this to personalize the
-						assistant's behavior or provide persistent context.
+						Optional. Add instructions to guide tone, format, or
+						assumptions for every message.
 					</p>
 					<textarea
 						bind:this={textareaEl}
 						class="ra-instruction-input"
 						value={customInstruction}
 						on:input={handleTextareaInput}
-						placeholder="e.g., 'Always cite sources in APA format' or 'I'm researching quantum computing'"
+						placeholder="Example: Cite sources in APA format. Write in bullet points. Assume I'm a beginner."
 						rows="4"
 					></textarea>
 					<button
 						type="button"
 						class="ra-save-btn"
 						on:click={handleSaveInstruction}
-						disabled={isSaving}
+						disabled={!canSave}
 					>
-						{isSaving ? "Saving..." : "Save Instruction"}
+						{isSaving ? "Saving..." : "Save"}
 					</button>
 				</div>
 
@@ -158,8 +168,8 @@
 				<div class="ra-settings-section">
 					<div class="ra-section-title">Help</div>
 					<p class="ra-section-desc">
-						For more settings including AI model selection and
-						advanced configuration, visit the
+						To manage login, connection settings, or refresh your
+						account, visit
 						<button
 							type="button"
 							class="ra-link-btn"
@@ -170,7 +180,7 @@
 									plugin.manifest.id,
 								);
 								handleClose();
-							}}>Plugin Settings</button
+							}}>Plugin settings</button
 						>.
 					</p>
 				</div>

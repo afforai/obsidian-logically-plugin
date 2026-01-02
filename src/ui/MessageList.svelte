@@ -130,6 +130,7 @@
 		deleteFromIndex: number;
 		regenerate: number;
 		copy: ChatMessage;
+		openFilePicker: void;
 	}>();
 
 	let listEl: HTMLElement;
@@ -192,6 +193,10 @@
 
 	function handleCopy(message: ChatMessage) {
 		dispatch("copy", message);
+	}
+
+	function handleOpenFilePicker() {
+		dispatch("openFilePicker");
 	}
 
 	function showCopyPopover(event: MouseEvent, message: ChatMessage) {
@@ -361,7 +366,12 @@
 				Ask me about your research, summarize papers, or explore topics.
 			</p>
 			{#if searchMode === "files"}
-				<div class="file-hint">
+				<button
+					type="button"
+					class="file-hint"
+					on:click={handleOpenFilePicker}
+					title="Open reference file picker"
+				>
 					<svg
 						width="14"
 						height="14"
@@ -374,8 +384,8 @@
 						<polyline points="17 8 12 3 7 8" />
 						<line x1="12" y1="3" x2="12" y2="15" />
 					</svg>
-					<span>Drag files here or use the file picker below</span>
-				</div>
+					<span>Drag files here or click to choose files</span>
+				</button>
 			{/if}
 		</div>
 	{:else}
@@ -609,6 +619,7 @@
 		width: auto !important;
 		height: auto !important;
 		inset: auto !important;
+		flex: 1;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
@@ -616,7 +627,6 @@
 		text-align: center;
 		padding: 40px 20px;
 		color: var(--text-muted);
-		pointer-events: none;
 	}
 
 	.empty-icon {
@@ -649,6 +659,18 @@
 		border-radius: 8px;
 		font-size: 12px;
 		color: var(--text-muted);
+		cursor: pointer;
+		font-family: inherit;
+	}
+
+	.file-hint:hover {
+		background: var(--background-modifier-hover);
+		color: var(--text-normal);
+	}
+
+	.file-hint:focus-visible {
+		outline: 2px solid var(--interactive-accent);
+		outline-offset: 2px;
 	}
 
 	.file-hint svg {

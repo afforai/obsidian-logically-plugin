@@ -51,14 +51,14 @@ export default class LogicallyPluginImpl extends Plugin implements LogicallyPlug
 		// Add command to open research assistant
 		this.addCommand({
 			id: 'open-research-assistant',
-			name: 'Open research assistant',
+			name: 'Open AI research assistant',
 			callback: () => { void this.activateView(); },
 		});
 
 		// Add command to toggle research assistant
 		this.addCommand({
 			id: 'toggle-research-assistant',
-			name: 'Toggle research assistant',
+			name: 'Toggle AI research assistant',
 			callback: () => { void this.toggleView(); },
 		});
 
@@ -93,7 +93,7 @@ export default class LogicallyPluginImpl extends Plugin implements LogicallyPlug
 			if (!this.ribbon) {
 				this.ribbon = this.addRibbonIcon(
 					'logically-icon',
-					'Logically research assistant',
+					'Logically AI research assistant',
 					() => { void this.toggleView(); },
 				);
 			}
