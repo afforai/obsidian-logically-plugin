@@ -36,7 +36,7 @@
 	let lastMaxFiles = maxFiles;
 
 	const FREE_MAX_FILES = 5;
-	const PAID_MAX_FILES = 20;
+	const PAID_MAX_FILES = Infinity;
 
 	function computeMaxFiles(privileges: Privilege[]): number {
 		const paidPrivileges: Privilege[] = [
