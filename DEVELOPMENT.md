@@ -4,7 +4,7 @@ This file is for contributors. For end-user install/setup/usage, see README.
 
 ## Prerequisites
 
-- Node.js 18+
+- Node.js 24+
 - pnpm (recommended via Corepack)
 
 ## Commands
