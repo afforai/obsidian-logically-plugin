@@ -67,11 +67,16 @@
 		}
 	}
 
+	/** Validate URL has safe protocol (http/https only) */
+	function isSafeUrl(url: string): boolean {
+		return /^https?:\/\//i.test(url);
+	}
+
 	/**
-	 * Open URL in external browser.
+	 * Open URL in external browser (only http/https URLs).
 	 */
 	function openUrl(url: string | undefined) {
-		if (url) {
+		if (url && isSafeUrl(url)) {
 			window.open(url, "_blank");
 		}
 	}

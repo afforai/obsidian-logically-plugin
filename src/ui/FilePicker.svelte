@@ -2,6 +2,7 @@
 	import { createEventDispatcher, onMount, tick } from "svelte";
 	import type { App } from "obsidian";
 	import { TFile, TFolder } from "obsidian";
+	import { IS_DEV_BUILD } from "../utils/env";
 
 	export let app: App;
 	export let selectedFiles: string[] = [];
@@ -90,10 +91,12 @@
 			// Method 1: getMarkdownFiles
 			if (typeof app.vault.getMarkdownFiles === "function") {
 				const mdFiles = app.vault.getMarkdownFiles();
-				console.log(
-					"[FilePicker] getMarkdownFiles() returned:",
-					mdFiles?.length ?? 0,
-				);
+				if (IS_DEV_BUILD) {
+					console.log(
+						"[FilePicker] getMarkdownFiles() returned:",
+						mdFiles?.length ?? 0,
+					);
+				}
 				if (mdFiles && mdFiles.length > 0) {
 					files = mdFiles;
 				}
@@ -105,22 +108,28 @@
 				typeof app.vault.getFiles === "function"
 			) {
 				const allVaultFiles = app.vault.getFiles();
-				console.log(
-					"[FilePicker] getFiles() returned:",
-					allVaultFiles?.length ?? 0,
-				);
+				if (IS_DEV_BUILD) {
+					console.log(
+						"[FilePicker] getFiles() returned:",
+						allVaultFiles?.length ?? 0,
+					);
+				}
 				if (allVaultFiles && allVaultFiles.length > 0) {
 					files = allVaultFiles.filter((f) => f.extension === "md");
-					console.log(
-						"[FilePicker] Filtered to md files:",
-						files.length,
-					);
+					if (IS_DEV_BUILD) {
+						console.log(
+							"[FilePicker] Filtered to md files:",
+							files.length,
+						);
+					}
 				}
 			}
 
 			// Method 3: Walk through vault.root if available
 			if (files.length === 0 && app.vault.getRoot) {
-				console.log("[FilePicker] Trying vault.getRoot()");
+				if (IS_DEV_BUILD) {
+					console.log("[FilePicker] Trying vault.getRoot()");
+				}
 				const root = app.vault.getRoot();
 				if (root && root.children) {
 					const walk = (folder: TFolder): TFile[] => {
@@ -138,16 +147,20 @@
 						return result;
 					};
 					files = walk(root);
-					console.log(
-						"[FilePicker] Walking vault root found:",
-						files.length,
-					);
+					if (IS_DEV_BUILD) {
+						console.log(
+							"[FilePicker] Walking vault root found:",
+							files.length,
+						);
+					}
 				}
 			}
 
 			if (files.length === 0) {
 				debugInfo = "No markdown files found";
-				console.warn("[FilePicker] No files found by any method");
+				if (IS_DEV_BUILD) {
+					console.warn("[FilePicker] No files found by any method");
+				}
 				allFiles = [];
 			} else {
 				debugInfo = `Found ${files.length} files`;
@@ -156,10 +169,12 @@
 					return (b.stat?.mtime ?? 0) - (a.stat?.mtime ?? 0);
 				});
 				allFiles = sorted;
-				console.log(
-					"[FilePicker] Total files loaded:",
-					allFiles.length,
-				);
+				if (IS_DEV_BUILD) {
+					console.log(
+						"[FilePicker] Total files loaded:",
+						allFiles.length,
+					);
+				}
 			}
 		} catch (err) {
 			debugInfo = `Error: ${err}`;
@@ -231,12 +246,14 @@
 	}
 
 	onMount(() => {
-		console.log(
-			"[FilePicker] onMount, app:",
-			!!app,
-			"vault:",
-			!!app?.vault,
-		);
+		if (IS_DEV_BUILD) {
+			console.log(
+				"[FilePicker] onMount, app:",
+				!!app,
+				"vault:",
+				!!app?.vault,
+			);
+		}
 		document.addEventListener("click", handleDocumentClick, true);
 		return () => {
 			document.removeEventListener("click", handleDocumentClick, true);

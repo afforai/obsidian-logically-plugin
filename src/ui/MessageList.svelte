@@ -6,6 +6,26 @@
 	import { createEventDispatcher } from "svelte";
 	import SourcesTable from "./SourcesTable.svelte";
 
+	/** Escape HTML special characters to prevent XSS */
+	function escapeHtml(str: string): string {
+		return str.replace(
+			/[&<>"']/g,
+			(c) =>
+				({
+					"&": "&amp;",
+					"<": "&lt;",
+					">": "&gt;",
+					'"': "&quot;",
+					"'": "&#39;",
+				})[c] ?? c,
+		);
+	}
+
+	/** Validate URL has safe protocol (http/https only) */
+	function isSafeUrl(url: string): boolean {
+		return /^https?:\/\//i.test(url);
+	}
+
 	export let messages: ChatMessage[] = [];
 	export let isLoading = false;
 	export let currentResponse = "";
@@ -113,11 +133,11 @@
 
 			if (source) {
 				const url = source.pdfUrl || source.url;
-				const title = source.filename || "Source";
-				if (url) {
-					return `<sup class="ra-citation-link"><a href="${url}" target="_blank" title="${title}">[${num}]</a></sup>`;
+				const title = escapeHtml(source.filename || "Source");
+				if (url && isSafeUrl(url)) {
+					return `<sup class="ra-citation-link"><a href="${escapeHtml(url)}" target="_blank" title="${title}">[${num}]</a></sup>`;
 				}
-				// No URL - just show the number with title tooltip
+				// No URL or unsafe URL - just show the number with title tooltip
 				return `<sup class="ra-citation-link" title="${title}">[${num}]</sup>`;
 			}
 			// Source not found, just show the number
