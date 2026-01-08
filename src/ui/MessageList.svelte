@@ -304,8 +304,17 @@
 		menu.showAtMouseEvent(event);
 	}
 
+	function isNearBottom(): boolean {
+		if (!listEl) return true;
+		const threshold = 100; // pixels from bottom
+		return (
+			listEl.scrollHeight - listEl.scrollTop - listEl.clientHeight <
+			threshold
+		);
+	}
+
 	function scrollToBottom() {
-		if (listEl) {
+		if (listEl && isNearBottom()) {
 			listEl.scrollTop = listEl.scrollHeight;
 		}
 	}

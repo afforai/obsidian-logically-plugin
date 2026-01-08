@@ -263,7 +263,6 @@
 		width: 100%;
 		padding: 8px 12px;
 		background: var(--background-secondary);
-		border: 1px solid var(--background-modifier-border);
 		border-radius: 6px;
 		cursor: pointer;
 		font-family: inherit;
@@ -311,7 +310,6 @@
 		right: 0;
 		margin-top: 4px;
 		background: var(--background-primary);
-		border: 1px solid var(--background-modifier-border);
 		border-radius: 8px;
 		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
 		z-index: 1000;
@@ -355,6 +353,7 @@
 		padding: 6px 8px;
 		background: transparent;
 		border: none;
+		box-shadow: none;
 		cursor: pointer;
 		font-family: inherit;
 		text-align: left;

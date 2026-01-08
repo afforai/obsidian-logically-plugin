@@ -640,6 +640,7 @@
 		padding: 8px 10px;
 		background: transparent;
 		border: none;
+		box-shadow: none;
 		cursor: pointer;
 		font-family: inherit;
 		text-align: left;
