@@ -10,19 +10,19 @@ Use Logically’s AI Research Assistant directly inside Obsidian and conduct cit
 
 ## Features
 
-* **Access to Logically AI Research Assistant** next to your writing canvas.
-* All search modes, including **Semantic Scholar Mode**, **Google Mode**, and **Document Retrieval Mode**, where you **can connect files from your vault**.
-* The latest AI models from **OpenAI, Anthropic, and Gemini.**
-* Access to standard AI models if you're subscribed to the Free plan, and access to standard, advanced, and reasoning AI models if you're subscribed to the Unlimited plan.
-* **Inline citations and data sources with every answer.** Data sources will appear inside a table when shown.
-* The ability to **add your chat output to your active Obsidian document** in one click.
-* **Custom instructions** for your chat, which can be edited at any time.
+- **Access to Logically AI Research Assistant** next to your writing canvas.
+- All search modes, including **Semantic Scholar Mode**, **Google Mode**, and **Document Retrieval Mode**, where you **can connect files from your vault**.
+- The latest AI models from **OpenAI, Anthropic, and Gemini.**
+- Access to standard AI models if you're subscribed to the Free plan, and access to standard, advanced, and reasoning AI models if you're subscribed to the Unlimited plan.
+- **Inline citations and data sources with every answer.** Data sources will appear inside a table when shown.
+- The ability to **add your chat output to your active Obsidian document** in one click.
+- **Custom instructions** for your chat, which can be edited at any time.
 
 ## Requirements
 
-* Obsidian.
-* A Logically (<https://www.logically.app>) account.
-* Internet access (messages are sent to Logically’s API).
+- Obsidian.
+- A Logically (<https://www.logically.app>) account.
+- Internet access (messages are sent to Logically’s API).
 
 ## Installation Guide
 
@@ -55,21 +55,21 @@ If you don’t see Logically listed in the Community Plugins browser, contact [t
 
 ### Using Document Retrieval Mode
 
-* When in Document Retrieval mode, click **"Files"** to open the file picker. From here, you can (search your vault and select notes) or drag a note from Obsidian’s file explorer into the assistant panel.
+- When in Document Retrieval mode, click **"Files"** to open the file picker. From here, you can (search your vault and select notes) or drag a note from Obsidian’s file explorer into the assistant panel.
 
 <img width="2841" height="1776" alt="image" src="https://github.com/user-attachments/assets/6752ee43-dd73-4287-a59a-1e8749829819" />
 
 **Notes:**
 
-* Dropping files that are **already selected** won’t error; the plugin will add the new ones and tell you which were already added.
-* When the limit is reached, additional dropped/selected files are skipped.
+- Dropping files that are **already selected** won’t error; the plugin will add the new ones and tell you which were already added.
+- When the limit is reached, additional dropped/selected files are skipped.
 
 ## Citations & Sources
 
-* When the backend returns citations, the plugin renders citation markers as clickable superscripts.
-* Messages with sources included show a **Sources table** where you can:
-  * Open external links (Google / Scholar).
-  * Open vault notes used as reference files.
+- When the backend returns citations, the plugin renders citation markers as clickable superscripts.
+- Messages with sources included show a **Sources table** where you can:
+  - Open external links (Google / Scholar).
+  - Open vault notes used as reference files.
 
 <img width="2841" height="1776" alt="image" src="https://github.com/user-attachments/assets/e11d8f1a-ad9a-4cb5-9d8f-40b75eb43672" />
 
@@ -77,40 +77,40 @@ If you don’t see Logically listed in the Community Plugins browser, contact [t
 
 Press the ”**Insert into active note”** icon button to add a chat output to your note.
 
-* Citation markers are converted into Obsidian **footnotes** (`[^1]`, `[^2]`, …).
-* Footnote definitions will appear at the bottom of your note.
-* A dedicated **Sources** section will be added with links to reference files and/or external URLs.
+- Citation markers are converted into Obsidian **footnotes** (`[^1]`, `[^2]`, …).
+- Footnote definitions will appear at the bottom of your note.
+- A dedicated **Sources** section will be added with links to reference files and/or external URLs.
 
 <img width="2802" height="1776" alt="image" src="https://github.com/user-attachments/assets/b75ca7de-c7ab-4f31-9b54-8328549aa0c4" />
 
 ### Settings panel (in the AI Research Assistant Header)
 
-* Shows the signed-in email
-* Lets you **logout**
-* Lets you edit and save a **Custom Instruction** (applied to every message)
+- Shows the signed-in email
+- Lets you **logout**
+- Lets you edit and save a **Custom Instruction** (applied to every message)
 
 <img width="2823" height="1776" alt="image" src="https://github.com/user-attachments/assets/8f1c0429-e78f-4ba4-919e-63f13ffac637" />
 
 ## Privacy & data
 
-* When you send a message, the plugin sends your prompt and relevant chat history to Logically’s API.
-* If you add reference files from external sources, the contents of those selected notes are included with the request.
-* Avoid adding sensitive/private content you don’t want processed remotely.
+- When you send a message, the plugin sends your prompt and relevant chat history to Logically’s API.
+- If you add reference files from external sources, the contents of those selected notes are included with the request.
+- Avoid adding sensitive/private content you don’t want processed remotely.
 
 ## Account switching & history
 
-* If you sign in to a **different Logically account** than the one you used last time, the plugin will **clear the existing chat history** to protect your privacy.
-* If after logging out, you log back in to your account, your chat history will be preserved.
+- If you sign in to a **different Logically account** than the one you used last time, the plugin will **clear the existing chat history** to protect your privacy.
+- If after logging out, you log back in to your account, your chat history will be preserved.
 
 ## Troubleshooting
 
-* **Google Sign-In**: the button is visible, but Google Sign-In isn’t available in Obsidian yet. For now, please sign in using **email + password** (you can set this up at <https://logically.app> under **Account Details**) or use a **login token** (see **Advanced → Log in with token** in plugin settings).
-* **Login fails**: confirm your credentials work on <https://logically.app> and try **Verify connection** in settings.
-* **Network / connection errors**: check your internet connection and try **Verify connection**.
-* **Dragging notes doesn’t add them**: only Markdown notes can be added; try dragging a `.md` note from the Obsidian file explorer.
-* **File picker is empty**: ensure your vault contains Markdown files and Obsidian has finished indexing.
+- **Google Sign-In**: the button is visible, but Google Sign-In isn’t available in Obsidian yet. For now, please sign in using **email + password** (you can set this up at <https://logically.app> under **Account Details**) or use a **login token** (see **Advanced → Log in with token** in plugin settings).
+- **Login fails**: confirm your credentials work on <https://logically.app> and try **Verify connection** in settings.
+- **Network / connection errors**: check your internet connection and try **Verify connection**.
+- **Dragging notes doesn’t add them**: only Markdown notes can be added; try dragging a `.md` note from the Obsidian file explorer.
+- **File picker is empty**: ensure your vault contains Markdown files and Obsidian has finished indexing.
 
 ## Links
 
-* <https://logically.app>
-* <https://obsidian.md>
+- <https://logically.app>
+- <https://obsidian.md>

@@ -1,10 +1,10 @@
-import { addIcon, Plugin, WorkspaceLeaf } from 'obsidian';
-import type { App, PluginManifest } from 'obsidian';
-import type { LogicallyPlugin, LogicallySettings } from './types';
-import { DEFAULT_SETTINGS, VIEW_TYPE_RESEARCH_ASSISTANT } from './types';
-import { LogicallyApi } from './services/logicallyApi';
-import { LogicallySettingTab } from './settings';
-import { ResearchAssistantView } from './views/researchAssistantView';
+import { addIcon, Plugin, WorkspaceLeaf } from "obsidian";
+import type { App, PluginManifest } from "obsidian";
+import type { LogicallyPlugin, LogicallySettings } from "./types";
+import { DEFAULT_SETTINGS, VIEW_TYPE_RESEARCH_ASSISTANT } from "./types";
+import { LogicallyApi } from "./services/logicallyApi";
+import { LogicallySettingTab } from "./settings";
+import { ResearchAssistantView } from "./views/researchAssistantView";
 
 // Logically brand icon (matches frontend logo)
 const LOGICALLY_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 25 26" fill="currentColor">
@@ -15,137 +15,150 @@ const LOGICALLY_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 25 
 /**
  * Logically Plugin - AI-powered research assistant for Obsidian
  */
-export default class LogicallyPluginImpl extends Plugin implements LogicallyPlugin {
-	settings: LogicallySettings;
-	api: LogicallyApi;
-	researchAssistantView: ResearchAssistantView | null = null;
-	ribbon: HTMLElement | null = null;
+export default class LogicallyPluginImpl
+  extends Plugin
+  implements LogicallyPlugin
+{
+  settings: LogicallySettings;
+  api: LogicallyApi;
+  researchAssistantView: ResearchAssistantView | null = null;
+  ribbon: HTMLElement | null = null;
 
-	constructor(app: App, manifest: PluginManifest) {
-		super(app, manifest);
-		this.settings = DEFAULT_SETTINGS;
-		this.api = new LogicallyApi(this.settings);
-	}
+  constructor(app: App, manifest: PluginManifest) {
+    super(app, manifest);
+    this.settings = DEFAULT_SETTINGS;
+    this.api = new LogicallyApi(this.settings);
+  }
 
-	async onload(): Promise<void> {
-		console.debug('Loading Logically plugin...');
+  async onload(): Promise<void> {
+    console.debug("Loading Logically plugin...");
 
-		await this.loadSettings();
-		this.api.updateSettings(this.settings);
+    await this.loadSettings();
+    this.api.updateSettings(this.settings);
 
-		// Register custom icon
-		addIcon('logically-icon', LOGICALLY_ICON);
+    // Register custom icon
+    addIcon("logically-icon", LOGICALLY_ICON);
 
-		// Register the research assistant view
-		this.registerView(
-			VIEW_TYPE_RESEARCH_ASSISTANT,
-			(leaf: WorkspaceLeaf) => new ResearchAssistantView(leaf, this),
-		);
+    // Register the research assistant view
+    this.registerView(
+      VIEW_TYPE_RESEARCH_ASSISTANT,
+      (leaf: WorkspaceLeaf) => new ResearchAssistantView(leaf, this),
+    );
 
-		// Add settings tab
-		this.addSettingTab(new LogicallySettingTab(this.app, this));
+    // Add settings tab
+    this.addSettingTab(new LogicallySettingTab(this.app, this));
 
-		// Add ribbon icon if enabled
-		this.showRibbon(this.settings.showRibbon);
+    // Add ribbon icon if enabled
+    this.showRibbon(this.settings.showRibbon);
 
-		// Add command to open research assistant
-		this.addCommand({
-			id: 'open-research-assistant',
-			name: 'Open AI research assistant',
-			callback: () => { void this.activateView(); },
-		});
+    // Add command to open research assistant
+    this.addCommand({
+      id: "open-research-assistant",
+      name: "Open AI research assistant",
+      callback: () => {
+        void this.activateView();
+      },
+    });
 
-		// Add command to toggle research assistant
-		this.addCommand({
-			id: 'toggle-research-assistant',
-			name: 'Toggle AI research assistant',
-			callback: () => { void this.toggleView(); },
-		});
+    // Add command to toggle research assistant
+    this.addCommand({
+      id: "toggle-research-assistant",
+      name: "Toggle AI research assistant",
+      callback: () => {
+        void this.toggleView();
+      },
+    });
 
-		console.debug('Logically plugin loaded');
-	}
+    console.debug("Logically plugin loaded");
+  }
 
-	onunload(): void {
-		// Remove ribbon if it exists
-		if (this.ribbon) {
-			this.ribbon.remove();
-			this.ribbon = null;
-		}
+  onunload(): void {
+    // Remove ribbon if it exists
+    if (this.ribbon) {
+      this.ribbon.remove();
+      this.ribbon = null;
+    }
 
-		console.debug('Logically plugin unloaded');
-	}
+    console.debug("Logically plugin unloaded");
+  }
 
-	async loadSettings(): Promise<void> {
-		const data = await this.loadData() as Partial<LogicallySettings> | null;
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, data ?? {});
-	}
+  async loadSettings(): Promise<void> {
+    const data = (await this.loadData()) as Partial<LogicallySettings> | null;
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, data ?? {});
+  }
 
-	async saveSettings(): Promise<void> {
-		await this.saveData(this.settings);
-		this.api.updateSettings(this.settings);
-	}
+  async saveSettings(): Promise<void> {
+    await this.saveData(this.settings);
+    this.api.updateSettings(this.settings);
+  }
 
-	/**
-	 * Show or hide the ribbon icon.
-	 */
-	showRibbon(show: boolean): void {
-		if (show) {
-			if (!this.ribbon) {
-				this.ribbon = this.addRibbonIcon(
-					'logically-icon',
-					'Logically AI research assistant',
-					() => { void this.toggleView(); },
-				);
-			}
-		} else {
-			if (this.ribbon) {
-				this.ribbon.remove();
-				this.ribbon = null;
-			}
-		}
-	}
+  /**
+   * Show or hide the ribbon icon.
+   */
+  showRibbon(show: boolean): void {
+    if (show) {
+      if (!this.ribbon) {
+        this.ribbon = this.addRibbonIcon(
+          "logically-icon",
+          "Logically AI research assistant",
+          () => {
+            void this.toggleView();
+          },
+        );
+      }
+    } else {
+      if (this.ribbon) {
+        this.ribbon.remove();
+        this.ribbon = null;
+      }
+    }
+  }
 
-	/**
-	 * Activate the research assistant view in the right sidebar.
-	 */
-	async activateView(): Promise<void> {
-		const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_RESEARCH_ASSISTANT);
-		
-		if (existing.length > 0) {
-			// View already exists, reveal it
-			const leaf = existing[0];
-			if (leaf) {
-				await this.app.workspace.revealLeaf(leaf);
-			}
-			return;
-		}
+  /**
+   * Activate the research assistant view in the right sidebar.
+   */
+  async activateView(): Promise<void> {
+    const existing = this.app.workspace.getLeavesOfType(
+      VIEW_TYPE_RESEARCH_ASSISTANT,
+    );
 
-		// Create new view in right sidebar
-		const rightLeaf = this.app.workspace.getRightLeaf(false);
-		if (rightLeaf) {
-			await rightLeaf.setViewState({
-				type: VIEW_TYPE_RESEARCH_ASSISTANT,
-				active: true,
-			});
-			await this.app.workspace.revealLeaf(rightLeaf);
-		}
-	}
+    if (existing.length > 0) {
+      // View already exists, reveal it
+      const leaf = existing[0];
+      if (leaf) {
+        await this.app.workspace.revealLeaf(leaf);
+      }
+      return;
+    }
 
-	/**
-	 * Toggle the research assistant view.
-	 */
-	async toggleView(): Promise<void> {
-		const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_RESEARCH_ASSISTANT);
-		
-		if (existing.length > 0) {
-			// View exists, close it
-			const leaf = existing[0];
-			if (leaf) {
-				leaf.detach();
-			}
-		} else {
-			// View doesn't exist, open it
-			await this.activateView();
-		}
-	}
+    // Create new view in right sidebar
+    const rightLeaf = this.app.workspace.getRightLeaf(false);
+    if (rightLeaf) {
+      await rightLeaf.setViewState({
+        type: VIEW_TYPE_RESEARCH_ASSISTANT,
+        active: true,
+      });
+      await this.app.workspace.revealLeaf(rightLeaf);
+    }
+  }
+
+  /**
+   * Toggle the research assistant view.
+   */
+  async toggleView(): Promise<void> {
+    const existing = this.app.workspace.getLeavesOfType(
+      VIEW_TYPE_RESEARCH_ASSISTANT,
+    );
+
+    if (existing.length > 0) {
+      // View exists, close it
+      const leaf = existing[0];
+      if (leaf) {
+        leaf.detach();
+      }
+    } else {
+      // View doesn't exist, open it
+      await this.activateView();
+    }
+  }
 }

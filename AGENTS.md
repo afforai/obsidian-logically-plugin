@@ -128,6 +128,7 @@ obsidian-logically-plugin/
 ```
 
 **Rules**:
+
 - `id` is immutable after release. Never change it.
 - `version` must follow Semantic Versioning (x.y.z, no `v` prefix).
 - Bump version with `pnpm run version` (auto-updates `manifest.json` + `versions.json`, commits).
@@ -169,6 +170,7 @@ Use Obsidian's command palette to trigger them.
 Settings tab is in `src/settings.ts` (LogicallySettingTab extends PluginSettingTab).
 
 **Persisted settings** (see `src/types.ts` LogicallySettings interface):
+
 - `userToken` – JWT/auth token (encrypted by Obsidian)
 - `selectedModel` – Current AI model choice
 - `searchMode` – Current search mode (files | google | semantic)
@@ -189,6 +191,7 @@ pnpm run version
 ```
 
 This updates:
+
 - `manifest.json` (`version` field)
 - `versions.json` (version history)
 - Creates a commit (git)
@@ -213,6 +216,7 @@ This updates:
 ### Community Plugin Submission
 
 After v1.0.0 release:
+
 - Follow [Obsidian community submission process](https://docs.obsidian.md/Plugins/Releasing/Submit+your+plugin)
 - Plugin will appear in **Community plugins → Browse** after approval
 - Updates automatically propagate via Obsidian's plugin catalog
@@ -222,6 +226,7 @@ After v1.0.0 release:
 This plugin calls external API (`https://api.logically.app`) and handles user authentication. Follow Obsidian's **Developer Policies** and **Plugin Guidelines** strictly.
 
 ### Do's
+
 ✅ **Minimal network calls**: Only request data when essential to the feature (e.g., completion, privilege check).  
 ✅ **Explicit opt-in**: Network requests are initiated by user actions (send message, login, verify token).  
 ✅ **Clear disclosure**: README documents "messages sent to Logically API" and privacy implications.  
@@ -231,6 +236,7 @@ This plugin calls external API (`https://api.logically.app`) and handles user au
 ✅ **Handle errors gracefully**: Show user-friendly error messages (see `utils/authErrors.ts`).
 
 ### Don'ts
+
 ❌ **No hidden telemetry**: Never send usage data without explicit user consent.  
 ❌ **No remote code execution**: Do not fetch and eval scripts, auto-update, or execute backend commands.  
 ❌ **No vault sniffing**: Only read files the user explicitly selects (file context mode).  
@@ -251,6 +257,7 @@ See [README.md](README.md) **Privacy & Data** section for user-facing guidance.
 ## UI & Copy Guidelines
 
 **In-app text** (buttons, headings, labels):
+
 - Sentence case for headings: "Research Assistant", "Custom Instruction"
 - Action-oriented imperatives: "Send Message", "Insert into Note", "Add Files"
 - Use **bold** for UI labels: **Settings → Logically AI Research Assistant**
@@ -258,11 +265,13 @@ See [README.md](README.md) **Privacy & Data** section for user-facing guidance.
 - Keep strings short and jargon-free (e.g., "Models" instead of "Language Models")
 
 **User-facing messages**:
+
 - Errors: Clear, actionable guidance (e.g., "Token expired. Please log in again.")
 - Success: Brief confirmation (e.g., "Message inserted!")
 - Warnings: Explain what went wrong and how to fix (e.g., "Vault contains no Markdown files.")
 
 **Svelte Component Text**:
+
 - Prefer slot content over magic strings
 - Use comments to document complex UX patterns (e.g., drag-drop behavior)
 - Keep component-specific text in `<script>` blocks, not hardcoded in templates
@@ -294,6 +303,7 @@ See [README.md](README.md) **Privacy & Data** section for user-facing guidance.
 ## Coding Conventions
 
 ### TypeScript
+
 - **Strict mode**: `"strict": true` in `tsconfig.json` (no implicit any, null checks, etc.).
 - **Type first**: Define all interfaces/unions in `src/types.ts` (single source of truth).
 - **Prefer `async/await`** over promise chains.
@@ -301,6 +311,7 @@ See [README.md](README.md) **Privacy & Data** section for user-facing guidance.
 - **No `any` types**: Use unions, interfaces, or generics instead.
 
 ### Svelte Components
+
 - **Single responsibility**: Each `.svelte` file handles one feature/view.
 - **Props**: Use TypeScript types for all component props.
 - **CSS prefix**: All classes start with `ra-` (research assistant).
@@ -309,6 +320,7 @@ See [README.md](README.md) **Privacy & Data** section for user-facing guidance.
 - **Keyboard handling**: Add `|stopPropagation` modifiers to prevent event bubbling to modals.
 
 ### Module Organization
+
 ```ts
 // main.ts – Minimal
 import { Plugin } from 'obsidian';
@@ -327,8 +339,12 @@ export default class LogicallyPluginImpl extends Plugin {
 ```ts
 // services/logicallyApi.ts – Domain logic
 export class LogicallyApi {
-  async signin(email, password) { /* HTTP request */ }
-  async streamMessage(prompt, model) { /* Stream handler */ }
+  async signin(email, password) {
+    /* HTTP request */
+  }
+  async streamMessage(prompt, model) {
+    /* Stream handler */
+  }
   // ... all API calls here
 }
 ```
@@ -341,6 +357,7 @@ export class LogicallyApi {
 ```
 
 ### Naming Conventions
+
 - **Classes**: `PascalCase` (LogicallyPlugin, ResearchAssistantView)
 - **Functions**: `camelCase` (streamMessage, formatAuthError)
 - **Constants**: `UPPER_SNAKE_CASE` (DEFAULT_SETTINGS, SEARCH_MODE_TO_TOOL)
@@ -352,11 +369,13 @@ export class LogicallyApi {
 This plugin supports mobile (`isDesktopOnly: false`), but some features may not work on all platforms.
 
 ### Known Limitations
+
 - **Drag-drop**: File explorer not available on iOS/Android; FilePicker dropdown still works.
 - **Custom instructions**: Text input works on mobile (keyboard shown).
 - **Citation rendering**: Works but limited screen space.
 
 ### Testing
+
 - Test on iOS Obsidian (iPad/iPhone) and Android Obsidian if possible.
 - Fallbacks: Ensure features degrade gracefully (e.g., FilePicker for drag-drop alternatives).
 - Touch UX: Buttons should be ≥44px for touch targets.
@@ -364,6 +383,7 @@ This plugin supports mobile (`isDesktopOnly: false`), but some features may not 
 ## Contributor Do's & Don'ts
 
 ### Do
+
 ✅ Keep `main.ts` under 150 lines (delegate logic to services/UI).
 ✅ Use `services/logicallyApi.ts` for all API calls.
 ✅ Define types in `src/types.ts` (central registry).
@@ -374,6 +394,7 @@ This plugin supports mobile (`isDesktopOnly: false`), but some features may not 
 ✅ Provide sensible defaults in settings.
 
 ### Don't
+
 ❌ Hardcode developer-specific paths (vault paths, API URLs in production).  
 ❌ Introduce network calls without documenting them.  
 ❌ Commit `node_modules/`, `main.js`, or build artifacts.  
@@ -387,6 +408,7 @@ This plugin supports mobile (`isDesktopOnly: false`), but some features may not 
 ### Code Review Checklist
 
 Before submitting a PR:
+
 - [ ] `pnpm build` passes (no TypeScript errors)
 - [ ] `pnpm lint` passes (no ESLint warnings)
 - [ ] Tested locally in Obsidian (dev vault)
@@ -421,9 +443,9 @@ In `src/settings.ts`:
 
 ```ts
 new Setting(containerEl)
-  .setName('Max file context')
-  .setDesc('Maximum number of files to include as reference')
-  .addSlider(slider => {
+  .setName("Max file context")
+  .setDesc("Maximum number of files to include as reference")
+  .addSlider((slider) => {
     slider
       .setLimits(1, 10, 1)
       .setValue(this.plugin.settings.maxFiles)
@@ -442,14 +464,14 @@ Create `src/ui/MyComponent.svelte`:
 
 ```svelte
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
-  
-  export let title: string = 'Default';
-  
+  import { createEventDispatcher } from "svelte";
+
+  export let title: string = "Default";
+
   const dispatch = createEventDispatcher<{ action: string }>();
-  
+
   function handleClick() {
-    dispatch('action', { detail: 'clicked' });
+    dispatch("action", { detail: "clicked" });
   }
 </script>
 
@@ -491,7 +513,7 @@ Call from UI/settings:
 ```ts
 const user = await this.api.getUserData();
 if (user) {
-  console.log('Logged in as:', user.email);
+  console.log("Logged in as:", user.email);
 }
 ```
 
@@ -500,7 +522,7 @@ if (user) {
 Use `utils/authErrors.ts` for auth errors:
 
 ```ts
-import { formatAuthError } from './utils/authErrors';
+import { formatAuthError } from "./utils/authErrors";
 
 async function login(email: string, password: string) {
   try {
@@ -512,8 +534,8 @@ async function login(email: string, password: string) {
     }
     // success
   } catch (error) {
-    console.error('[Logically] Login failed:', error);
-    new Notice('An unexpected error occurred. Please try again.');
+    console.error("[Logically] Login failed:", error);
+    new Notice("An unexpected error occurred. Please try again.");
   }
 }
 ```
@@ -525,15 +547,15 @@ In `src/types.ts`:
 ```ts
 export interface ChatMessage {
   id: string;
-  role: 'user' | 'assistant' | 'system';
+  role: "user" | "assistant" | "system";
   content: string;
   timestamp: number;
-  sources?: SourceNode[];  // Add new field
+  sources?: SourceNode[]; // Add new field
 }
 
 export interface LogicallySettings {
   // ... existing fields
-  maxFiles: number;  // Add new setting
+  maxFiles: number; // Add new setting
 }
 ```
 
@@ -549,44 +571,52 @@ export const DEFAULT_SETTINGS: LogicallySettings = {
 ## Troubleshooting
 
 ### Plugin doesn't load after build
+
 - Ensure `main.js` and `manifest.json` are at the top level of `<Vault>/.obsidian/plugins/logically/`
 - Check browser console (F12) and Obsidian console for error messages
 - Try reloading Obsidian completely (`Ctrl+R` on Windows/Linux, `Cmd+R` on macOS)
 
 ### Build fails
+
 - Run `pnpm install` to ensure all dependencies are installed
 - Check `tsconfig.json`: Node types must include `https`, `url`
 - Verify Node.js version: `node --version` (should be 18+)
 
 ### Types not recognized
+
 - Run `pnpm build` to trigger type checking (`tsc -noEmit`)
 - Check `src/types.ts` for the type definition
 - Verify imports are correct (check relative paths)
 
 ### Linting errors
+
 - Run `pnpm lint:fix` to auto-fix common issues
 - Review ESLint rules in `eslint.config.mts` (Obsidian plugin rules)
 - Check for missing imports or unused variables
 
 ### UI not rendering
+
 - Check browser console (F12) for JavaScript errors
 - Verify Svelte component syntax (closing tags, event handlers)
 - Ensure CSS classes use `ra-` prefix to avoid Obsidian collisions
 - Test component in isolation before integrating
 
 ### API calls failing
+
 - Check network tab (F12) for request/response details
 - Verify token is valid: use "Verify connection" in settings
 - Check API base URL: should be `https://api.logically.app` in production
 - Log request/response for debugging: add `console.debug()` in `logicallyApi.ts`
 
 ### Settings not persisting
+
 - Ensure `await this.saveSettings()` is called (async)
 - Verify setting exists in `LogicallySettings` interface and `DEFAULT_SETTINGS`
 - Check Obsidian console for save errors
 - Try reloading plugin after manual save
 
 ### Commands not appearing
+
 - Verify `addCommand()` is called in `onload()` (not in `onunload()`)
 - Check command `id` is unique (no duplicates)
 - Reload plugin or restart Obsidian
@@ -595,6 +625,7 @@ export const DEFAULT_SETTINGS: LogicallySettings = {
 ## References & Resources
 
 ### Official Documentation
+
 - [Obsidian Plugin API](https://docs.obsidian.md)
 - [Obsidian Sample Plugin](https://github.com/obsidianmd/obsidian-sample-plugin)
 - [Developer Policies](https://docs.obsidian.md/Developer+policies)
@@ -602,10 +633,12 @@ export const DEFAULT_SETTINGS: LogicallySettings = {
 - [Obsidian Style Guide](https://help.obsidian.md/style-guide)
 
 ### Project Documentation
+
 - [README.md](README.md) – User guide (install, setup, usage)
 - [DEVELOPMENT.md](DEVELOPMENT.md) – Developer setup & release
 
 ### Tools & Frameworks
+
 - [TypeScript Documentation](https://www.typescriptlang.org/docs/)
 - [Svelte Documentation](https://svelte.dev/docs)
 - [esbuild Guide](https://esbuild.github.io/)

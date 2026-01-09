@@ -1,655 +1,714 @@
-import { requestUrl } from 'obsidian';
-import type { RequestUrlParam } from 'obsidian';
-import * as https from 'https';
-import { URL } from 'url';
+import { requestUrl } from "obsidian";
+import type { RequestUrlParam } from "obsidian";
+import * as https from "https";
+import { URL } from "url";
 import type {
-	ApiResponse,
-	BaseModel,
-	ChatMessage,
-	LogicallySettings,
-	PlanInfo,
-	Privilege,
-	UserInfo,
-	SearchMode,
-	SourceNode,
-} from '../types';
-import { DEFAULT_SETTINGS, SEARCH_MODE_TO_TOOL } from '../types';
-import { IS_DEV_BUILD } from '../utils/env';
+  ApiResponse,
+  BaseModel,
+  ChatMessage,
+  LogicallySettings,
+  PlanInfo,
+  Privilege,
+  UserInfo,
+  SearchMode,
+  SourceNode,
+} from "../types";
+import { DEFAULT_SETTINGS, SEARCH_MODE_TO_TOOL } from "../types";
+import { IS_DEV_BUILD } from "../utils/env";
 
 type StreamHandler = {
-	onChunk: (chunk: string) => void;
-	onComplete: () => void;
-	onError: (error: string) => void;
-	onCitation?: (sources: SourceNode[]) => void;
+  onChunk: (chunk: string) => void;
+  onComplete: () => void;
+  onError: (error: string) => void;
+  onCitation?: (sources: SourceNode[]) => void;
 };
 
 const STREAM_TOKEN_REGEX = /❬([A-Z_]+)❭([\s\S]*?)❬\/\1❭/g;
 
 const DEFAULT_SESSION_FIELDS = () => {
-	const now = new Date();
-	return {
-		_id: '',
-		sharing: false,
-		name: '',
-		system: '',
-		files: [] as unknown[],
-		tool: 'doc_retrieval',
-		google_auto: true,
-		google_gl: 'us',
-		google_hl: 'en',
-		google_tbs: 'any',
-		google_tbs_min_enable: true,
-		google_tbs_min: now,
-		google_tbs_max_enable: true,
-		google_tbs_max: now,
-		google_include: [] as string[],
-		google_exclude: [] as string[],
-		semantic_scholar_auto: true,
-		semantic_scholar_types: [] as string[],
-		semantic_scholar_fields: [] as string[],
-		semantic_scholar_tbs_min_enable: true,
-		semantic_scholar_tbs_min: now,
-		semantic_scholar_tbs_max_enable: true,
-		semantic_scholar_tbs_max: now,
-		semantic_scholar_open_access: false,
-		created: now,
-		accessed: now,
-	};
+  const now = new Date();
+  return {
+    _id: "",
+    sharing: false,
+    name: "",
+    system: "",
+    files: [] as unknown[],
+    tool: "doc_retrieval",
+    google_auto: true,
+    google_gl: "us",
+    google_hl: "en",
+    google_tbs: "any",
+    google_tbs_min_enable: true,
+    google_tbs_min: now,
+    google_tbs_max_enable: true,
+    google_tbs_max: now,
+    google_include: [] as string[],
+    google_exclude: [] as string[],
+    semantic_scholar_auto: true,
+    semantic_scholar_types: [] as string[],
+    semantic_scholar_fields: [] as string[],
+    semantic_scholar_tbs_min_enable: true,
+    semantic_scholar_tbs_min: now,
+    semantic_scholar_tbs_max_enable: true,
+    semantic_scholar_tbs_max: now,
+    semantic_scholar_open_access: false,
+    created: now,
+    accessed: now,
+  };
 };
 
 const unescapeStream = (value: string) =>
-	value.replace(/❪/g, '❬').replace(/❫/g, '❭');
+  value.replace(/❪/g, "❬").replace(/❫/g, "❭");
 
 /**
  * Logically API client for interacting with the Logically backend.
  */
 export class LogicallyApi {
- 	private settings: LogicallySettings;
+  private settings: LogicallySettings;
 
-	constructor(settings: LogicallySettings) {
-		this.settings = settings;
-	}
+  constructor(settings: LogicallySettings) {
+    this.settings = settings;
+  }
 
-	/**
-	 * Update the settings reference (call after settings change).
-	 */
-	updateSettings(settings: LogicallySettings): void {
-		this.settings = settings;
-	}
+  /**
+   * Update the settings reference (call after settings change).
+   */
+  updateSettings(settings: LogicallySettings): void {
+    this.settings = settings;
+  }
 
-	/**
-	 * Get the full API URL for an endpoint.
-	 */
-	private getUrl(endpoint: string): string {
-		const baseUrl = IS_DEV_BUILD ? this.settings.apiUrl : DEFAULT_SETTINGS.apiUrl;
-		const base = baseUrl.replace(/\/$/, '');
-		return `${base}${endpoint}`;
-	}
+  /**
+   * Get the full API URL for an endpoint.
+   */
+  private getUrl(endpoint: string): string {
+    const baseUrl = IS_DEV_BUILD
+      ? this.settings.apiUrl
+      : DEFAULT_SETTINGS.apiUrl;
+    const base = baseUrl.replace(/\/$/, "");
+    return `${base}${endpoint}`;
+  }
 
-	private buildAuthHeaders(additional?: Record<string, string>): Record<string, string> {
-		return this.settings.userToken
-			? { 'x-access-token': this.settings.userToken, ...additional }
-			: { ...additional };
-	}
+  private buildAuthHeaders(
+    additional?: Record<string, string>,
+  ): Record<string, string> {
+    return this.settings.userToken
+      ? { "x-access-token": this.settings.userToken, ...additional }
+      : { ...additional };
+  }
 
-	private parseError(json: unknown, status: number): string {
-		if (!json) return `Request failed with status ${status}`;
-		if (typeof json === 'string') return json;
-		if (typeof json === 'object') {
-			const obj = json as Record<string, unknown>;
-			if (typeof obj.code === 'string') return obj.code;
-			if (typeof obj.message === 'string') return obj.message;
-		}
-		return `Request failed with status ${status}`;
-	}
+  private parseError(json: unknown, status: number): string {
+    if (!json) return `Request failed with status ${status}`;
+    if (typeof json === "string") return json;
+    if (typeof json === "object") {
+      const obj = json as Record<string, unknown>;
+      if (typeof obj.code === "string") return obj.code;
+      if (typeof obj.message === "string") return obj.message;
+    }
+    return `Request failed with status ${status}`;
+  }
 
-	/**
-	 * Make an authenticated API request.
-	 */
-	private async request<T>(
-		endpoint: string,
-		options: Partial<RequestUrlParam> = {}
-	): Promise<ApiResponse<T>> {
-		if (!this.settings.userToken) {
-			return { success: false, error: 'Not authenticated' };
-		}
+  /**
+   * Make an authenticated API request.
+   */
+  private async request<T>(
+    endpoint: string,
+    options: Partial<RequestUrlParam> = {},
+  ): Promise<ApiResponse<T>> {
+    if (!this.settings.userToken) {
+      return { success: false, error: "Not authenticated" };
+    }
 
-		try {
-			const response = await requestUrl({
-				url: this.getUrl(endpoint),
-				method: options.method ?? 'GET',
-				headers: {
-					'Content-Type': 'application/json',
-					...this.buildAuthHeaders(options.headers),
-				},
-				body: options.body,
-			});
+    try {
+      const response = await requestUrl({
+        url: this.getUrl(endpoint),
+        method: options.method ?? "GET",
+        headers: {
+          "Content-Type": "application/json",
+          ...this.buildAuthHeaders(options.headers),
+        },
+        body: options.body,
+      });
 
-			if (response.status >= 200 && response.status < 300) {
-				return { success: true, data: response.json as unknown as T };
-			}
+      if (response.status >= 200 && response.status < 300) {
+        return { success: true, data: response.json as unknown as T };
+      }
 
-			const errorMessage = this.parseError(response.json as unknown, response.status);
-			return { success: false, error: errorMessage };
-		} catch (error) {
-			console.error('[Logically API] Request failed:', error);
-			return {
-				success: false,
-				error: error instanceof Error ? error.message : 'Unknown error occurred',
-			};
-		}
-	}
+      const errorMessage = this.parseError(
+        response.json as unknown,
+        response.status,
+      );
+      return { success: false, error: errorMessage };
+    } catch (error) {
+      console.error("[Logically API] Request failed:", error);
+      return {
+        success: false,
+        error:
+          error instanceof Error ? error.message : "Unknown error occurred",
+      };
+    }
+  }
 
-	/**
-	 * Check if the user is authenticated.
-	 */
-	isAuthenticated(): boolean {
-		return !!this.settings.userToken;
-	}
+  /**
+   * Check if the user is authenticated.
+   */
+  isAuthenticated(): boolean {
+    return !!this.settings.userToken;
+  }
 
-	/**
-	 * Login with email and password.
-	 */
-	async login(email: string, password: string): Promise<ApiResponse<{ token: string; user: UserInfo }>> {
-		try {
-			const normalizedEmail = email.trim();
-			const response = await requestUrl({
-				url: this.getUrl('/signin'),
-				method: 'POST',
-				throw: false,
-				contentType: 'application/json',
-				headers: {
-					'Content-Type': 'application/json',
-				},
-				body: JSON.stringify({ email: normalizedEmail, password }),
-			});
+  /**
+   * Login with email and password.
+   */
+  async login(
+    email: string,
+    password: string,
+  ): Promise<ApiResponse<{ token: string; user: UserInfo }>> {
+    try {
+      const normalizedEmail = email.trim();
+      const response = await requestUrl({
+        url: this.getUrl("/signin"),
+        method: "POST",
+        throw: false,
+        contentType: "application/json",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email: normalizedEmail, password }),
+      });
 
-			if (response.status >= 200 && response.status < 300) {
-				const data = response.json as Record<string, unknown>;
-				const token = (data.token ?? data.accessToken) as string | undefined;
-				const rawUser = data.user as { id?: string; email?: string; privileges?: Privilege[] } | undefined;
-				const user: UserInfo = {
-					id: rawUser?.id ?? '',
-					email: rawUser?.email ?? normalizedEmail,
-					privileges: rawUser?.privileges ?? [],
-				};
-				return {
-					success: true,
-					data: {
-						token: token ?? '',
-						user,
-					},
-				};
-			}
+      if (response.status >= 200 && response.status < 300) {
+        const data = response.json as Record<string, unknown>;
+        const token = (data.token ?? data.accessToken) as string | undefined;
+        const rawUser = data.user as
+          | { id?: string; email?: string; privileges?: Privilege[] }
+          | undefined;
+        const user: UserInfo = {
+          id: rawUser?.id ?? "",
+          email: rawUser?.email ?? normalizedEmail,
+          privileges: rawUser?.privileges ?? [],
+        };
+        return {
+          success: true,
+          data: {
+            token: token ?? "",
+            user,
+          },
+        };
+      }
 
-			const errorMessage = this.parseError(response.json as unknown, response.status);
-			return { success: false, error: errorMessage };
-		} catch (error) {
-			console.error('[Logically API] Login failed:', error);
-			return {
-				success: false,
-				error: error instanceof Error ? error.message : 'Login failed',
-			};
-		}
-	}
+      const errorMessage = this.parseError(
+        response.json as unknown,
+        response.status,
+      );
+      return { success: false, error: errorMessage };
+    } catch (error) {
+      console.error("[Logically API] Login failed:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Login failed",
+      };
+    }
+  }
 
-	/**
-	 * Login with Google OAuth access token.
-	 * Backend verifies the token with Google and returns a JWT.
-	 */
-	async loginWithGoogle(accessToken: string): Promise<ApiResponse<{ token: string; user: UserInfo; email: string }>> {
-		try {
-			const response = await requestUrl({
-				url: this.getUrl('/google_oauth'),
-				method: 'POST',
-				throw: false,
-				contentType: 'application/json',
-				headers: {
-					'Content-Type': 'application/json',
-				},
-				body: JSON.stringify({ access_token: accessToken }),
-			});
+  /**
+   * Login with Google OAuth access token.
+   * Backend verifies the token with Google and returns a JWT.
+   */
+  async loginWithGoogle(
+    accessToken: string,
+  ): Promise<ApiResponse<{ token: string; user: UserInfo; email: string }>> {
+    try {
+      const response = await requestUrl({
+        url: this.getUrl("/google_oauth"),
+        method: "POST",
+        throw: false,
+        contentType: "application/json",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ access_token: accessToken }),
+      });
 
-			if (response.status >= 200 && response.status < 300) {
-				const data = response.json as Record<string, unknown>;
-				const token = (data.token ?? data.accessToken) as string | undefined;
-				if (!token || token === 'null') {
-					return { success: false, error: 'No token received from server' };
-				}
-				const rawUser = data.user as { id?: string; email?: string; privileges?: Privilege[] } | undefined;
-				const email = (data.email as string | undefined) ?? '';
-				const user: UserInfo = {
-					id: rawUser?.id ?? '',
-					email: rawUser?.email ?? email,
-					privileges: rawUser?.privileges ?? [],
-				};
-				return {
-					success: true,
-					data: {
-						token,
-						user,
-						email,
-					},
-				};
-			}
+      if (response.status >= 200 && response.status < 300) {
+        const data = response.json as Record<string, unknown>;
+        const token = (data.token ?? data.accessToken) as string | undefined;
+        if (!token || token === "null") {
+          return { success: false, error: "No token received from server" };
+        }
+        const rawUser = data.user as
+          | { id?: string; email?: string; privileges?: Privilege[] }
+          | undefined;
+        const email = (data.email as string | undefined) ?? "";
+        const user: UserInfo = {
+          id: rawUser?.id ?? "",
+          email: rawUser?.email ?? email,
+          privileges: rawUser?.privileges ?? [],
+        };
+        return {
+          success: true,
+          data: {
+            token,
+            user,
+            email,
+          },
+        };
+      }
 
-			const errorMessage = this.parseError(response.json as unknown, response.status);
-			return { success: false, error: errorMessage };
-		} catch (error) {
-			console.error('[Logically API] Google OAuth failed:', error);
-			return {
-				success: false,
-				error: error instanceof Error ? error.message : 'Google login failed',
-			};
-		}
-	}
+      const errorMessage = this.parseError(
+        response.json as unknown,
+        response.status,
+      );
+      return { success: false, error: errorMessage };
+    } catch (error) {
+      console.error("[Logically API] Google OAuth failed:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Google login failed",
+      };
+    }
+  }
 
-	/**
-	 * Verify the current token is valid.
-	 */
-	async verifyToken(): Promise<ApiResponse<UserInfo>> {
-		return this.request<UserInfo>('/user');
-	}
+  /**
+   * Verify the current token is valid.
+   */
+  async verifyToken(): Promise<ApiResponse<UserInfo>> {
+    return this.request<UserInfo>("/user");
+  }
 
-	/**
-	 * Get current user information.
-	 */
-	async getCurrentUser(): Promise<ApiResponse<UserInfo>> {
-		return this.request<UserInfo>('/user');
-	}
+  /**
+   * Get current user information.
+   */
+  async getCurrentUser(): Promise<ApiResponse<UserInfo>> {
+    return this.request<UserInfo>("/user");
+  }
 
-	/**
-	 * Get current user's plan information (includes privileges).
-	 */
-	async getUserPlan(): Promise<ApiResponse<PlanInfo>> {
-		return this.request<PlanInfo>('/plan');
-	}
+  /**
+   * Get current user's plan information (includes privileges).
+   */
+  async getUserPlan(): Promise<ApiResponse<PlanInfo>> {
+    return this.request<PlanInfo>("/plan");
+  }
 
-	/**
-	 * Send a chat message to the research assistant.
-	 */
-	private buildCompletionPayload(
-		message: string,
-		conversationHistory: ChatMessage[],
-		searchMode: SearchMode = 'files',
-		contextNotes?: string,
-		fileAttachments?: Array<{ type: 'file'; data: string }>,
-	) {
-		const base = DEFAULT_SESSION_FIELDS();
-		// Set the tool based on search mode
-		base.tool = SEARCH_MODE_TO_TOOL[searchMode] || 'doc_retrieval';
-		
-		// Send custom instructions directly - backend prepends "Additional instruction:"
-		const notes = (contextNotes ?? '').trim();
-		if (notes) {
-			base.system = notes;
-		}
-		// Build user message with optional file attachments
-		const userMsg: { role: 'user'; content: string; attachments?: Array<{ type: 'file'; data: string }> } = {
-			role: 'user' as const,
-			content: message,
-		};
-		if (fileAttachments && fileAttachments.length > 0) {
-			userMsg.attachments = fileAttachments;
-		}
-		const history = [
-			...conversationHistory.map((msg) => ({ role: msg.role, content: msg.content })),
-			userMsg,
-		];
-		return {
-			session: { ...base, history },
-			externalData: { location: 'research_assistant' },
-			heartbeat: 5000,
-		};
-	}
+  /**
+   * Send a chat message to the research assistant.
+   */
+  private buildCompletionPayload(
+    message: string,
+    conversationHistory: ChatMessage[],
+    searchMode: SearchMode = "files",
+    contextNotes?: string,
+    fileAttachments?: Array<{ type: "file"; data: string }>,
+  ) {
+    const base = DEFAULT_SESSION_FIELDS();
+    // Set the tool based on search mode
+    base.tool = SEARCH_MODE_TO_TOOL[searchMode] || "doc_retrieval";
 
-	/**
-	 * Stream a chat response.
-	 *
-	 * IMPORTANT: In Obsidian (Electron), browser `fetch` requests can be blocked by CORS.
-	 * We use Node's `https` to stream the response without CORS restrictions.
-	 */
-	async streamMessage(
-		message: string,
-		_model: BaseModel,
-		conversationHistory: ChatMessage[] = [],
-		onChunk: (chunk: string) => void,
-		onComplete: () => void,
-		onError: (error: string) => void,
-		contextNotes?: string,
-		searchMode: SearchMode = 'files',
-		onCitation?: (sources: SourceNode[]) => void,
-		fileAttachments?: Array<{ type: 'file'; data: string }>,
-	): Promise<void> {
-		if (!this.settings.userToken) {
-			onError('You are not logged in');
-			return;
-		}
+    // Send custom instructions directly - backend prepends "Additional instruction:"
+    const notes = (contextNotes ?? "").trim();
+    if (notes) {
+      base.system = notes;
+    }
+    // Build user message with optional file attachments
+    const userMsg: {
+      role: "user";
+      content: string;
+      attachments?: Array<{ type: "file"; data: string }>;
+    } = {
+      role: "user" as const,
+      content: message,
+    };
+    if (fileAttachments && fileAttachments.length > 0) {
+      userMsg.attachments = fileAttachments;
+    }
+    const history = [
+      ...conversationHistory.map((msg) => ({
+        role: msg.role,
+        content: msg.content,
+      })),
+      userMsg,
+    ];
+    return {
+      session: { ...base, history },
+      externalData: { location: "research_assistant" },
+      heartbeat: 5000,
+    };
+  }
 
-		try {
-			const payload = this.buildCompletionPayload(
-				message,
-				conversationHistory,
-				searchMode,
-				contextNotes,
-				fileAttachments,
-			);
-			await this.streamCompletionViaNodeHttp(
-				new URL(this.getUrl('/app/completion')),
-				JSON.stringify(payload),
-				{ onChunk, onComplete, onError, onCitation },
-			);
-		} catch (error) {
-			console.error('[Logically API] Stream failed:', error);
-			onError(error instanceof Error ? error.message : 'Failed to get response');
-		}
-	}
+  /**
+   * Stream a chat response.
+   *
+   * IMPORTANT: In Obsidian (Electron), browser `fetch` requests can be blocked by CORS.
+   * We use Node's `https` to stream the response without CORS restrictions.
+   */
+  async streamMessage(
+    message: string,
+    _model: BaseModel,
+    conversationHistory: ChatMessage[] = [],
+    onChunk: (chunk: string) => void,
+    onComplete: () => void,
+    onError: (error: string) => void,
+    contextNotes?: string,
+    searchMode: SearchMode = "files",
+    onCitation?: (sources: SourceNode[]) => void,
+    fileAttachments?: Array<{ type: "file"; data: string }>,
+  ): Promise<void> {
+    if (!this.settings.userToken) {
+      onError("You are not logged in");
+      return;
+    }
 
-	private async streamCompletionViaNodeHttp(
-		url: URL,
-		body: string,
-		handlers: StreamHandler,
-	): Promise<void> {
-		return await new Promise((resolve) => {
-			const headers = this.buildAuthHeaders({
-				'Content-Type': 'application/json',
-				'Content-Length': Buffer.byteLength(body).toString(),
-			});
+    try {
+      const payload = this.buildCompletionPayload(
+        message,
+        conversationHistory,
+        searchMode,
+        contextNotes,
+        fileAttachments,
+      );
+      await this.streamCompletionViaNodeHttp(
+        new URL(this.getUrl("/app/completion")),
+        JSON.stringify(payload),
+        { onChunk, onComplete, onError, onCitation },
+      );
+    } catch (error) {
+      console.error("[Logically API] Stream failed:", error);
+      onError(
+        error instanceof Error ? error.message : "Failed to get response",
+      );
+    }
+  }
 
-			const request = https.request(
-				{
-					protocol: url.protocol,
-					hostname: url.hostname,
-					port: url.port ? Number(url.port) : undefined,
-					path: `${url.pathname}${url.search}`,
-					method: 'POST',
-					headers,
-				},
-				(response) => {
-					const statusCode = response.statusCode ?? 0;
-					if (statusCode < 200 || statusCode >= 300) {
-						let errorBody = '';
-						response.setEncoding('utf8');
-						response.on('data', (chunk) => {
-							errorBody += String(chunk);
-						});
-						response.on('end', () => {
-							try {
-								const parsed: unknown = errorBody ? JSON.parse(errorBody) : null;
-								handlers.onError(this.parseError(parsed, statusCode));
-							} catch {
-								handlers.onError(this.parseError(errorBody || null, statusCode));
-							}
-							resolve();
-						});
-						return;
-					}
+  private async streamCompletionViaNodeHttp(
+    url: URL,
+    body: string,
+    handlers: StreamHandler,
+  ): Promise<void> {
+    return await new Promise((resolve) => {
+      const headers = this.buildAuthHeaders({
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(body).toString(),
+      });
 
-					this.consumeNodeStream(response, handlers)
-						.then(resolve)
-						.catch((err) => {
-							handlers.onError(err instanceof Error ? err.message : String(err));
-							resolve();
-						});
-				},
-			);
+      const request = https.request(
+        {
+          protocol: url.protocol,
+          hostname: url.hostname,
+          port: url.port ? Number(url.port) : undefined,
+          path: `${url.pathname}${url.search}`,
+          method: "POST",
+          headers,
+        },
+        (response) => {
+          const statusCode = response.statusCode ?? 0;
+          if (statusCode < 200 || statusCode >= 300) {
+            let errorBody = "";
+            response.setEncoding("utf8");
+            response.on("data", (chunk) => {
+              errorBody += String(chunk);
+            });
+            response.on("end", () => {
+              try {
+                const parsed: unknown = errorBody
+                  ? JSON.parse(errorBody)
+                  : null;
+                handlers.onError(this.parseError(parsed, statusCode));
+              } catch {
+                handlers.onError(
+                  this.parseError(errorBody || null, statusCode),
+                );
+              }
+              resolve();
+            });
+            return;
+          }
 
-			request.on('error', (err) => {
-				handlers.onError(err instanceof Error ? err.message : String(err));
-				resolve();
-			});
+          this.consumeNodeStream(response, handlers)
+            .then(resolve)
+            .catch((err) => {
+              handlers.onError(
+                err instanceof Error ? err.message : String(err),
+              );
+              resolve();
+            });
+        },
+      );
 
-			request.write(body);
-			request.end();
-		});
-	}
+      request.on("error", (err) => {
+        handlers.onError(err instanceof Error ? err.message : String(err));
+        resolve();
+      });
 
-	/**
-	 * Get available libraries/documents for the user.
-	 */
-	async getLibraries(): Promise<ApiResponse<Array<{ id: string; name: string }>>> {
-		return this.request('/app/libraries');
-	}
+      request.write(body);
+      request.end();
+    });
+  }
 
-	async updateBaseModel(model: BaseModel): Promise<ApiResponse<unknown>> {
-		return this.request('/app/user_config', {
-			method: 'PUT',
-			body: JSON.stringify({ update: { base_model: model } }),
-		});
-	}
+  /**
+   * Get available libraries/documents for the user.
+   */
+  async getLibraries(): Promise<
+    ApiResponse<Array<{ id: string; name: string }>>
+  > {
+    return this.request("/app/libraries");
+  }
 
-	private async consumeStream(
-		body: ReadableStream<Uint8Array>,
-		handlers: StreamHandler,
-	): Promise<void> {
-		const reader = body.getReader();
-		const decoder = new TextDecoder();
-		let buffer = '';
-		let completed = false;
+  async updateBaseModel(model: BaseModel): Promise<ApiResponse<unknown>> {
+    return this.request("/app/user_config", {
+      method: "PUT",
+      body: JSON.stringify({ update: { base_model: model } }),
+    });
+  }
 
-		const handlePacket = (key: string, rawValue: string) => {
-			const payload = unescapeStream(rawValue);
-			switch (key) {
-				case 'COMPLETION': {
-					try {
-						const parsed = JSON.parse(payload) as Record<string, unknown>;
-						const chunk = parsed.chunk;
-						if (typeof chunk === 'string') handlers.onChunk(chunk);
-						else handlers.onChunk(JSON.stringify(parsed));
-					} catch {
-						handlers.onChunk(payload);
-					}
-					break;
-				}
-				case 'CITATION': {
-					// CITATION packet contains final completion + metadata for citations.
-					// Extract source nodes from the nodes array.
-					if (handlers.onCitation) {
-						try {
-							const parsed = JSON.parse(payload) as Record<string, unknown>;
-							const nodes = parsed.nodes;
-							if (nodes && Array.isArray(nodes)) {
-								const sources: SourceNode[] = (nodes as Record<string, unknown>[]).map((n) => ({
-									fileid: n.fileid as string | undefined,
-									filename: (n.filename as string) ?? 'Unknown',
-									filetype: (n.filetype as string) ?? '',
-									url: n.url as string | undefined,
-									pdfUrl: n.pdfUrl as string | undefined,
-									pages: n.pages as number[] | undefined,
-									content: n.content as string | undefined,
-									citationCount: (n.others as Record<string, unknown> | undefined)?.citation_count as number | undefined,
-									referenceCount: (n.others as Record<string, unknown> | undefined)?.reference_count as number | undefined,
-								}));
-								handlers.onCitation(sources);
-							}
-						} catch {
-							// Ignore parse errors for citation data
-						}
-					}
-					break;
-				}
-				case 'ERROR': {
-					try {
-						const parsed = JSON.parse(payload) as Record<string, unknown>;
-						const code = parsed.code;
-						const message = parsed.message;
-						handlers.onError((typeof code === 'string' ? code : null) ?? (typeof message === 'string' ? message : null) ?? 'Request failed');
-					} catch {
-						handlers.onError(payload || 'Request failed');
-					}
-					completed = true;
-					break;
-				}
-				case 'DONE': {
-					completed = true;
-					handlers.onComplete();
-					break;
-				}
-				default:
-					break;
-			}
-		};
+  private async consumeStream(
+    body: ReadableStream<Uint8Array>,
+    handlers: StreamHandler,
+  ): Promise<void> {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let completed = false;
 
-		const flushBuffer = () => {
-			STREAM_TOKEN_REGEX.lastIndex = 0;
-			let match: RegExpExecArray | null;
-			let lastIndex = 0;
-			while ((match = STREAM_TOKEN_REGEX.exec(buffer)) !== null) {
-				lastIndex = STREAM_TOKEN_REGEX.lastIndex;
-				const key = match[1];
-				const value = match[2];
-				if (key && value !== undefined) {
-					handlePacket(key, value);
-				}
-			}
-			buffer = buffer.slice(lastIndex);
-		};
+    const handlePacket = (key: string, rawValue: string) => {
+      const payload = unescapeStream(rawValue);
+      switch (key) {
+        case "COMPLETION": {
+          try {
+            const parsed = JSON.parse(payload) as Record<string, unknown>;
+            const chunk = parsed.chunk;
+            if (typeof chunk === "string") handlers.onChunk(chunk);
+            else handlers.onChunk(JSON.stringify(parsed));
+          } catch {
+            handlers.onChunk(payload);
+          }
+          break;
+        }
+        case "CITATION": {
+          // CITATION packet contains final completion + metadata for citations.
+          // Extract source nodes from the nodes array.
+          if (handlers.onCitation) {
+            try {
+              const parsed = JSON.parse(payload) as Record<string, unknown>;
+              const nodes = parsed.nodes;
+              if (nodes && Array.isArray(nodes)) {
+                const sources: SourceNode[] = (
+                  nodes as Record<string, unknown>[]
+                ).map((n) => ({
+                  fileid: n.fileid as string | undefined,
+                  filename: (n.filename as string) ?? "Unknown",
+                  filetype: (n.filetype as string) ?? "",
+                  url: n.url as string | undefined,
+                  pdfUrl: n.pdfUrl as string | undefined,
+                  pages: n.pages as number[] | undefined,
+                  content: n.content as string | undefined,
+                  citationCount: (
+                    n.others as Record<string, unknown> | undefined
+                  )?.citation_count as number | undefined,
+                  referenceCount: (
+                    n.others as Record<string, unknown> | undefined
+                  )?.reference_count as number | undefined,
+                }));
+                handlers.onCitation(sources);
+              }
+            } catch {
+              // Ignore parse errors for citation data
+            }
+          }
+          break;
+        }
+        case "ERROR": {
+          try {
+            const parsed = JSON.parse(payload) as Record<string, unknown>;
+            const code = parsed.code;
+            const message = parsed.message;
+            handlers.onError(
+              (typeof code === "string" ? code : null) ??
+                (typeof message === "string" ? message : null) ??
+                "Request failed",
+            );
+          } catch {
+            handlers.onError(payload || "Request failed");
+          }
+          completed = true;
+          break;
+        }
+        case "DONE": {
+          completed = true;
+          handlers.onComplete();
+          break;
+        }
+        default:
+          break;
+      }
+    };
 
-		while (true) {
-			const { value, done } = await reader.read();
-			if (value) {
-				buffer += decoder.decode(value, { stream: true });
-				flushBuffer();
-			}
-			if (done || completed) break;
-		}
+    const flushBuffer = () => {
+      STREAM_TOKEN_REGEX.lastIndex = 0;
+      let match: RegExpExecArray | null;
+      let lastIndex = 0;
+      while ((match = STREAM_TOKEN_REGEX.exec(buffer)) !== null) {
+        lastIndex = STREAM_TOKEN_REGEX.lastIndex;
+        const key = match[1];
+        const value = match[2];
+        if (key && value !== undefined) {
+          handlePacket(key, value);
+        }
+      }
+      buffer = buffer.slice(lastIndex);
+    };
 
-		flushBuffer();
-		if (!completed) {
-			handlers.onComplete();
-		}
-	}
+    while (true) {
+      const { value, done } = await reader.read();
+      if (value) {
+        buffer += decoder.decode(value, { stream: true });
+        flushBuffer();
+      }
+      if (done || completed) break;
+    }
 
-	private async consumeNodeStream(
-		body: NodeJS.ReadableStream,
-		handlers: StreamHandler,
-	): Promise<void> {
-		const decoder = new TextDecoder();
-		let buffer = '';
-		let completed = false;
+    flushBuffer();
+    if (!completed) {
+      handlers.onComplete();
+    }
+  }
 
-		const handlePacket = (key: string, rawValue: string) => {
-			const payload = unescapeStream(rawValue);
-			switch (key) {
-				case 'COMPLETION': {
-					try {
-						const parsed = JSON.parse(payload) as Record<string, unknown>;
-						const chunk = parsed.chunk;
-						if (typeof chunk === 'string') handlers.onChunk(chunk);
-						else handlers.onChunk(JSON.stringify(parsed));
-					} catch {
-						handlers.onChunk(payload);
-					}
-					break;
-				}
-				case 'CITATION': {
-					// Extract source nodes from the nodes array.
-					if (handlers.onCitation) {
-						try {
-							const parsed = JSON.parse(payload) as Record<string, unknown>;
-							const nodes = parsed.nodes;
-							if (nodes && Array.isArray(nodes)) {
-								const sources: SourceNode[] = (nodes as Record<string, unknown>[]).map((n) => ({
-									fileid: n.fileid as string | undefined,
-									filename: (n.filename as string) ?? 'Unknown',
-									filetype: (n.filetype as string) ?? '',
-									url: n.url as string | undefined,
-									pdfUrl: n.pdfUrl as string | undefined,
-									pages: n.pages as number[] | undefined,
-									content: n.content as string | undefined,
-									citationCount: (n.others as Record<string, unknown> | undefined)?.citation_count as number | undefined,
-									referenceCount: (n.others as Record<string, unknown> | undefined)?.reference_count as number | undefined,
-								}));
-								handlers.onCitation(sources);
-							}
-						} catch {
-							// Ignore parse errors for citation data
-						}
-					}
-					break;
-				}
-				case 'ERROR': {
-					try {
-						const parsed = JSON.parse(payload) as Record<string, unknown>;
-						const code = parsed.code;
-						const message = parsed.message;
-						handlers.onError((typeof code === 'string' ? code : null) ?? (typeof message === 'string' ? message : null) ?? 'Request failed');
-					} catch {
-						handlers.onError(payload || 'Request failed');
-					}
-					completed = true;
-					break;
-				}
-				case 'DONE': {
-					completed = true;
-					handlers.onComplete();
-					break;
-				}
-				default:
-					break;
-			}
-		};
+  private async consumeNodeStream(
+    body: NodeJS.ReadableStream,
+    handlers: StreamHandler,
+  ): Promise<void> {
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let completed = false;
 
-		const flushBuffer = () => {
-			STREAM_TOKEN_REGEX.lastIndex = 0;
-			let match: RegExpExecArray | null;
-			let lastIndex = 0;
-			while ((match = STREAM_TOKEN_REGEX.exec(buffer)) !== null) {
-				lastIndex = STREAM_TOKEN_REGEX.lastIndex;
-				const key = match[1];
-				const value = match[2];
-				if (key && value !== undefined) {
-					handlePacket(key, value);
-				}
-			}
-			buffer = buffer.slice(lastIndex);
-		};
+    const handlePacket = (key: string, rawValue: string) => {
+      const payload = unescapeStream(rawValue);
+      switch (key) {
+        case "COMPLETION": {
+          try {
+            const parsed = JSON.parse(payload) as Record<string, unknown>;
+            const chunk = parsed.chunk;
+            if (typeof chunk === "string") handlers.onChunk(chunk);
+            else handlers.onChunk(JSON.stringify(parsed));
+          } catch {
+            handlers.onChunk(payload);
+          }
+          break;
+        }
+        case "CITATION": {
+          // Extract source nodes from the nodes array.
+          if (handlers.onCitation) {
+            try {
+              const parsed = JSON.parse(payload) as Record<string, unknown>;
+              const nodes = parsed.nodes;
+              if (nodes && Array.isArray(nodes)) {
+                const sources: SourceNode[] = (
+                  nodes as Record<string, unknown>[]
+                ).map((n) => ({
+                  fileid: n.fileid as string | undefined,
+                  filename: (n.filename as string) ?? "Unknown",
+                  filetype: (n.filetype as string) ?? "",
+                  url: n.url as string | undefined,
+                  pdfUrl: n.pdfUrl as string | undefined,
+                  pages: n.pages as number[] | undefined,
+                  content: n.content as string | undefined,
+                  citationCount: (
+                    n.others as Record<string, unknown> | undefined
+                  )?.citation_count as number | undefined,
+                  referenceCount: (
+                    n.others as Record<string, unknown> | undefined
+                  )?.reference_count as number | undefined,
+                }));
+                handlers.onCitation(sources);
+              }
+            } catch {
+              // Ignore parse errors for citation data
+            }
+          }
+          break;
+        }
+        case "ERROR": {
+          try {
+            const parsed = JSON.parse(payload) as Record<string, unknown>;
+            const code = parsed.code;
+            const message = parsed.message;
+            handlers.onError(
+              (typeof code === "string" ? code : null) ??
+                (typeof message === "string" ? message : null) ??
+                "Request failed",
+            );
+          } catch {
+            handlers.onError(payload || "Request failed");
+          }
+          completed = true;
+          break;
+        }
+        case "DONE": {
+          completed = true;
+          handlers.onComplete();
+          break;
+        }
+        default:
+          break;
+      }
+    };
 
-		return await new Promise((resolve) => {
-			const onData = (chunk: unknown) => {
-				if (completed) return;
-				if (typeof chunk === 'string') {
-					buffer += chunk;
-				} else {
-					buffer += decoder.decode(chunk as Uint8Array, { stream: true });
-				}
-				flushBuffer();
-				if (completed) {
-					body.removeListener('data', onData);
-					body.removeListener('end', onEnd);
-					body.removeListener('error', onError);
-					resolve();
-				}
-			};
+    const flushBuffer = () => {
+      STREAM_TOKEN_REGEX.lastIndex = 0;
+      let match: RegExpExecArray | null;
+      let lastIndex = 0;
+      while ((match = STREAM_TOKEN_REGEX.exec(buffer)) !== null) {
+        lastIndex = STREAM_TOKEN_REGEX.lastIndex;
+        const key = match[1];
+        const value = match[2];
+        if (key && value !== undefined) {
+          handlePacket(key, value);
+        }
+      }
+      buffer = buffer.slice(lastIndex);
+    };
 
-			const onEnd = () => {
-				flushBuffer();
-				if (!completed) handlers.onComplete();
-				body.removeListener('data', onData);
-				body.removeListener('end', onEnd);
-				body.removeListener('error', onError);
-				resolve();
-			};
+    return await new Promise((resolve) => {
+      const onData = (chunk: unknown) => {
+        if (completed) return;
+        if (typeof chunk === "string") {
+          buffer += chunk;
+        } else {
+          buffer += decoder.decode(chunk as Uint8Array, { stream: true });
+        }
+        flushBuffer();
+        if (completed) {
+          body.removeListener("data", onData);
+          body.removeListener("end", onEnd);
+          body.removeListener("error", onError);
+          resolve();
+        }
+      };
 
-			const onError = (err: unknown) => {
-				handlers.onError(err instanceof Error ? err.message : String(err));
-				body.removeListener('data', onData);
-				body.removeListener('end', onEnd);
-				body.removeListener('error', onError);
-				resolve();
-			};
+      const onEnd = () => {
+        flushBuffer();
+        if (!completed) handlers.onComplete();
+        body.removeListener("data", onData);
+        body.removeListener("end", onEnd);
+        body.removeListener("error", onError);
+        resolve();
+      };
 
-			body.on('data', onData);
-			body.on('end', onEnd);
-			body.on('error', onError);
-		});
-	}
+      const onError = (err: unknown) => {
+        handlers.onError(err instanceof Error ? err.message : String(err));
+        body.removeListener("data", onData);
+        body.removeListener("end", onEnd);
+        body.removeListener("error", onError);
+        resolve();
+      };
 
-	/**
-	 * Logout and clear the token.
-	 */
-	logout(): void {
-		// Token clearing is handled by the settings
-	}
+      body.on("data", onData);
+      body.on("end", onEnd);
+      body.on("error", onError);
+    });
+  }
+
+  /**
+   * Logout and clear the token.
+   */
+  logout(): void {
+    // Token clearing is handled by the settings
+  }
 }
-

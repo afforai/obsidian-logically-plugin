@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+main.js
+*.map
+
+# Git
+.git/
+.husky/_/
+
+# IDE
+.vscode/
+.idea/
+
+# Obsidian
+.obsidian/
+
+# Locks and metadata
+pnpm-lock.yaml
+package-lock.json
+versions.json

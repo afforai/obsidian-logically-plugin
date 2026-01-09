@@ -1,10 +1,10 @@
 {
-	"id": "logically",
-	"name": "Logically AI Research Assistant",
-	"version": "0.1.0",
-	"minAppVersion": "1.0.0",
-	"description": "AI-powered research assistant integrated with Logically (logically.app)",
-	"author": "Logically",
-	"authorUrl": "https://logically.app",
-	"isDesktopOnly": false
+  "id": "logically",
+  "name": "Logically AI Research Assistant",
+  "version": "0.1.0",
+  "minAppVersion": "1.0.0",
+  "description": "AI-powered research assistant integrated with Logically (logically.app)",
+  "author": "Logically",
+  "authorUrl": "https://logically.app",
+  "isDesktopOnly": false
 }
