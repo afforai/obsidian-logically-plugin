@@ -273,6 +273,7 @@ export class LogicallyApi {
 		conversationHistory: ChatMessage[],
 		searchMode: SearchMode = 'files',
 		contextNotes?: string,
+		fileAttachments?: Array<{ type: 'file'; data: string }>,
 	) {
 		const base = DEFAULT_SESSION_FIELDS();
 		// Set the tool based on search mode
@@ -283,9 +284,17 @@ export class LogicallyApi {
 		if (notes) {
 			base.system = notes;
 		}
+		// Build user message with optional file attachments
+		const userMsg: { role: 'user'; content: string; attachments?: Array<{ type: 'file'; data: string }> } = {
+			role: 'user' as const,
+			content: message,
+		};
+		if (fileAttachments && fileAttachments.length > 0) {
+			userMsg.attachments = fileAttachments;
+		}
 		const history = [
 			...conversationHistory.map((msg) => ({ role: msg.role, content: msg.content })),
-			{ role: 'user' as const, content: message },
+			userMsg,
 		];
 		return {
 			session: { ...base, history },
@@ -310,6 +319,7 @@ export class LogicallyApi {
 		contextNotes?: string,
 		searchMode: SearchMode = 'files',
 		onCitation?: (sources: SourceNode[]) => void,
+		fileAttachments?: Array<{ type: 'file'; data: string }>,
 	): Promise<void> {
 		if (!this.settings.userToken) {
 			onError('You are not logged in');
@@ -322,6 +332,7 @@ export class LogicallyApi {
 				conversationHistory,
 				searchMode,
 				contextNotes,
+				fileAttachments,
 			);
 			await this.streamCompletionViaNodeHttp(
 				new URL(this.getUrl('/app/completion')),

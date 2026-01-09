@@ -129,10 +129,12 @@
 		await filePickerRef?.openDropdown?.();
 	}
 
-	async function getContextFromFiles(): Promise<string> {
-		if (contextFiles.length === 0) return "";
+	async function getContextFromFiles(): Promise<
+		Array<{ type: "file"; data: string }>
+	> {
+		if (contextFiles.length === 0) return [];
 
-		const contents: string[] = [];
+		const attachments: Array<{ type: "file"; data: string }> = [];
 		for (const filePath of contextFiles) {
 			try {
 				const file = app.vault.getAbstractFileByPath(filePath);
@@ -140,14 +142,16 @@
 				if (file.extension !== "md") continue;
 
 				const content = await app.vault.cachedRead(file);
-				contents.push(`## ${file.basename}\n\n${content}`);
+				attachments.push({
+					type: "file",
+					data: `## ${file.basename}\n\n${content}`,
+				});
 			} catch (e) {
 				console.warn(`[Logically] Could not read file: ${filePath}`, e);
 			}
 		}
 
-		if (contents.length === 0) return "";
-		return `\n\n---\n# Reference Files\n\n${contents.join("\n\n---\n\n")}`;
+		return attachments;
 	}
 
 	function getCustomInstructionContext(): string {
@@ -220,11 +224,10 @@
 		messages = [...messages, assistantMessage];
 
 		try {
-			// Only include file context when mode is "files"
-			const fileContext =
-				selectedMode === "files" ? await getContextFromFiles() : "";
+			// Get file attachments when mode is "files"
+			const fileAttachments =
+				selectedMode === "files" ? await getContextFromFiles() : [];
 			const customContext = getCustomInstructionContext();
-			const combinedContext = customContext + fileContext;
 
 			await plugin.api.streamMessage(
 				text,
@@ -259,7 +262,7 @@
 					}
 				},
 				(error: string) => handleApiError(error, assistantMessage),
-				combinedContext,
+				customContext,
 				selectedMode,
 				(sources: SourceNode[]) => {
 					// Merge API sources with context file sources
@@ -271,6 +274,7 @@
 						sources: allSources,
 					});
 				},
+				fileAttachments,
 			);
 		} catch (error) {
 			console.error("[Logically] Error sending message:", error);
@@ -335,10 +339,9 @@
 		messages = [...messages, assistantMessage];
 
 		try {
-			const fileContext =
-				selectedMode === "files" ? await getContextFromFiles() : "";
+			const fileAttachments =
+				selectedMode === "files" ? await getContextFromFiles() : [];
 			const customContext = getCustomInstructionContext();
-			const combinedContext = customContext + fileContext;
 
 			await plugin.api.streamMessage(
 				userMessage.content,
@@ -373,7 +376,7 @@
 					}
 				},
 				(error: string) => handleApiError(error, assistantMessage),
-				combinedContext,
+				customContext,
 				selectedMode,
 				(sources: SourceNode[]) => {
 					// Merge API sources with context file sources
@@ -385,6 +388,7 @@
 						sources: allSources,
 					});
 				},
+				fileAttachments,
 			);
 		} catch (error) {
 			console.error("[Logically] Error regenerating:", error);
