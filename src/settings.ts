@@ -102,8 +102,7 @@ export class LogicallySettingTab extends PluginSettingTab {
     const footerLink = footerEl.createEl("a", {
       href: "https://logically.app",
     });
-    // eslint-disable-next-line obsidianmd/ui/sentence-case -- brand name
-    footerLink.innerText = "logically.app";
+    footerLink.innerText = "Logically.app";
     footerLink.setAttribute("target", "_blank");
   }
 
@@ -176,8 +175,7 @@ export class LogicallySettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
           this.refreshResearchAssistantView();
 
-          // eslint-disable-next-line obsidianmd/ui/sentence-case -- toast notification
-          new Notice("✓ Token validated. Welcome back!");
+          new Notice("Token validated. Welcome back!");
           this.tokenInput = "";
           this.display();
         } else {
@@ -308,8 +306,7 @@ export class LogicallySettingTab extends PluginSettingTab {
 
               this.loginEmail = "";
               this.loginPassword = "";
-              // eslint-disable-next-line obsidianmd/ui/sentence-case -- toast notification
-              new Notice("✓ Welcome back! You are now logged in.");
+              new Notice("Welcome back! You are now logged in.");
               this.display();
             } else {
               const message = formatAuthError(result.error ?? "Login failed");

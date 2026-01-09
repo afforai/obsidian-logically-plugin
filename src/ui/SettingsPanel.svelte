@@ -350,6 +350,7 @@
   .ra-link-btn {
     background: none;
     border: none;
+    box-shadow: none;
     padding: 0;
     cursor: pointer;
     font-family: inherit;

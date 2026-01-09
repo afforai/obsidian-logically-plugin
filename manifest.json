@@ -6,5 +6,5 @@
   "description": "Use Logically's AI Research Assistant to conduct citation-backed research on the files in your vault.",
   "author": "Logically",
   "authorUrl": "https://logically.app",
-  "isDesktopOnly": false
+  "isDesktopOnly": true
 }

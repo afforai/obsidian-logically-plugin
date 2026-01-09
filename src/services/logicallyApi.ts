@@ -364,8 +364,8 @@ export class LogicallyApi {
         contextNotes,
         fileAttachments,
       );
-      await this.streamCompletionViaNodeHttp(
-        new URL(this.getUrl("/app/completion")),
+      await this.streamCompletionViaRequestUrl(
+        this.getUrl("/app/completion"),
         JSON.stringify(payload),
         { onChunk, onComplete, onError, onCitation },
       );
@@ -377,35 +377,36 @@ export class LogicallyApi {
     }
   }
 
-  private async streamCompletionViaNodeHttp(
-    url: URL,
+  private async streamCompletionViaRequestUrl(
+    url: string,
     body: string,
     handlers: StreamHandler,
   ): Promise<void> {
-    return await new Promise((resolve) => {
-      const headers = this.buildAuthHeaders({
-        "Content-Type": "application/json",
-        "Content-Length": Buffer.byteLength(body).toString(),
-      });
+    const parsedUrl = new URL(url);
+    const headers = this.buildAuthHeaders({
+      "Content-Type": "application/json",
+      "Content-Length": Buffer.byteLength(body).toString(),
+    });
 
-      const request = https.request(
+    return new Promise((resolve) => {
+      const req = https.request(
         {
-          protocol: url.protocol,
-          hostname: url.hostname,
-          port: url.port ? Number(url.port) : undefined,
-          path: `${url.pathname}${url.search}`,
+          protocol: parsedUrl.protocol,
+          hostname: parsedUrl.hostname,
+          port: parsedUrl.port || undefined,
+          path: parsedUrl.pathname + parsedUrl.search,
           method: "POST",
           headers,
         },
-        (response) => {
-          const statusCode = response.statusCode ?? 0;
+        (res) => {
+          const statusCode = res.statusCode ?? 0;
           if (statusCode < 200 || statusCode >= 300) {
             let errorBody = "";
-            response.setEncoding("utf8");
-            response.on("data", (chunk) => {
+            res.setEncoding("utf8");
+            res.on("data", (chunk) => {
               errorBody += String(chunk);
             });
-            response.on("end", () => {
+            res.on("end", () => {
               try {
                 const parsed: unknown = errorBody
                   ? JSON.parse(errorBody)
@@ -421,7 +422,7 @@ export class LogicallyApi {
             return;
           }
 
-          this.consumeNodeStream(response, handlers)
+          this.consumeNodeStream(res, handlers)
             .then(resolve)
             .catch((err) => {
               handlers.onError(
@@ -432,13 +433,13 @@ export class LogicallyApi {
         },
       );
 
-      request.on("error", (err) => {
+      req.on("error", (err) => {
         handlers.onError(err instanceof Error ? err.message : String(err));
         resolve();
       });
 
-      request.write(body);
-      request.end();
+      req.write(body);
+      req.end();
     });
   }
 
@@ -456,118 +457,6 @@ export class LogicallyApi {
       method: "PUT",
       body: JSON.stringify({ update: { base_model: model } }),
     });
-  }
-
-  private async consumeStream(
-    body: ReadableStream<Uint8Array>,
-    handlers: StreamHandler,
-  ): Promise<void> {
-    const reader = body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let completed = false;
-
-    const handlePacket = (key: string, rawValue: string) => {
-      const payload = unescapeStream(rawValue);
-      switch (key) {
-        case "COMPLETION": {
-          try {
-            const parsed = JSON.parse(payload) as Record<string, unknown>;
-            const chunk = parsed.chunk;
-            if (typeof chunk === "string") handlers.onChunk(chunk);
-            else handlers.onChunk(JSON.stringify(parsed));
-          } catch {
-            handlers.onChunk(payload);
-          }
-          break;
-        }
-        case "CITATION": {
-          // CITATION packet contains final completion + metadata for citations.
-          // Extract source nodes from the nodes array.
-          if (handlers.onCitation) {
-            try {
-              const parsed = JSON.parse(payload) as Record<string, unknown>;
-              const nodes = parsed.nodes;
-              if (nodes && Array.isArray(nodes)) {
-                const sources: SourceNode[] = (
-                  nodes as Record<string, unknown>[]
-                ).map((n) => ({
-                  fileid: n.fileid as string | undefined,
-                  filename: (n.filename as string) ?? "Unknown",
-                  filetype: (n.filetype as string) ?? "",
-                  url: n.url as string | undefined,
-                  pdfUrl: n.pdfUrl as string | undefined,
-                  pages: n.pages as number[] | undefined,
-                  content: n.content as string | undefined,
-                  citationCount: (
-                    n.others as Record<string, unknown> | undefined
-                  )?.citation_count as number | undefined,
-                  referenceCount: (
-                    n.others as Record<string, unknown> | undefined
-                  )?.reference_count as number | undefined,
-                }));
-                handlers.onCitation(sources);
-              }
-            } catch {
-              // Ignore parse errors for citation data
-            }
-          }
-          break;
-        }
-        case "ERROR": {
-          try {
-            const parsed = JSON.parse(payload) as Record<string, unknown>;
-            const code = parsed.code;
-            const message = parsed.message;
-            handlers.onError(
-              (typeof code === "string" ? code : null) ??
-                (typeof message === "string" ? message : null) ??
-                "Request failed",
-            );
-          } catch {
-            handlers.onError(payload || "Request failed");
-          }
-          completed = true;
-          break;
-        }
-        case "DONE": {
-          completed = true;
-          handlers.onComplete();
-          break;
-        }
-        default:
-          break;
-      }
-    };
-
-    const flushBuffer = () => {
-      STREAM_TOKEN_REGEX.lastIndex = 0;
-      let match: RegExpExecArray | null;
-      let lastIndex = 0;
-      while ((match = STREAM_TOKEN_REGEX.exec(buffer)) !== null) {
-        lastIndex = STREAM_TOKEN_REGEX.lastIndex;
-        const key = match[1];
-        const value = match[2];
-        if (key && value !== undefined) {
-          handlePacket(key, value);
-        }
-      }
-      buffer = buffer.slice(lastIndex);
-    };
-
-    while (true) {
-      const { value, done } = await reader.read();
-      if (value) {
-        buffer += decoder.decode(value, { stream: true });
-        flushBuffer();
-      }
-      if (done || completed) break;
-    }
-
-    flushBuffer();
-    if (!completed) {
-      handlers.onComplete();
-    }
   }
 
   private async consumeNodeStream(
