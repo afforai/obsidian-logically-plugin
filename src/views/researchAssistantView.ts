@@ -29,6 +29,8 @@ export class ResearchAssistantView extends ItemView {
   }
 
   async onOpen(): Promise<void> {
+    await super.onOpen();
+
     const container = this.containerEl.children[1];
     if (container) {
       container.empty();
@@ -45,6 +47,8 @@ export class ResearchAssistantView extends ItemView {
   }
 
   async onClose(): Promise<void> {
+    await super.onClose();
+
     if (this.component) {
       this.component.$destroy();
       this.component = null;
