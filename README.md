@@ -8,11 +8,7 @@
 
 Use Logically’s AI Research Assistant directly inside Obsidian and conduct citation-backed research on the files in your vault.
 
-<div align="center">
-  <a href="https://www.youtube.com/watch?v=Il--shPteIM">
-    <img src="https://img.youtube.com/vi/Il--shPteIM/maxresdefault.jpg" alt="Logically Obsidian plugin">
-  </a>
-</div>
+[![YouTube Video Il--shPteIM](https://img.youtube.com/vi/Il--shPteIM/maxresdefault.jpg)](https://www.youtube.com/watch?v=Il--shPteIM)
 
 ## Features
 
