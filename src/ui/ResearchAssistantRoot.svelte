@@ -5,6 +5,7 @@
     LogicallyPlugin,
     ChatMessage,
     BaseModel,
+    ModelEntity,
     Privilege,
     SearchMode,
     SourceNode,
@@ -34,6 +35,8 @@
   let userName: string = plugin.settings.userName ?? "";
   let maxFiles = 5;
   let lastMaxFiles = maxFiles;
+  /** Available AI models - fetched from API or fallback to static list */
+  let availableModels: ModelEntity[] = AI_MODELS;
 
   const FREE_MAX_FILES = 5;
   const PAID_MAX_FILES = Infinity;
@@ -100,6 +103,14 @@
 
     const update = await plugin.api.updateBaseModel(model);
     if (!update.success) {
+      // Silently handle auth errors - user sees login prompt on next interaction
+      if (
+        update.error === "[auth_expired]" ||
+        update.error === "Not authenticated"
+      ) {
+        isAuthenticated = false;
+        return;
+      }
       new Notice(
         `Failed to update AI model: ${update.error ?? "Unknown error"}`,
       );
@@ -703,6 +714,9 @@
     userPrivileges = plugin.settings.userPrivileges ?? [];
     userName = plugin.settings.userName ?? "";
 
+    // Fetch available models from API (with static fallback)
+    availableModels = await plugin.api.getModels();
+
     // Fetch user name if authenticated but name not set
     if (isAuthenticated && !userName) {
       const userResult = await plugin.api.getCurrentUser();
@@ -720,7 +734,7 @@
     saveChatHistory();
   }
 
-  $: selectedModelInfo = AI_MODELS.find((m) => m.id === selectedModel);
+  $: selectedModelInfo = availableModels.find((m) => m.id === selectedModel);
 </script>
 
 <div
@@ -852,6 +866,7 @@
       {userPrivileges}
       {filesExpanded}
       fileCount={contextFiles.length}
+      models={availableModels}
     />
   {/if}
 </div>

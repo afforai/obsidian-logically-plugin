@@ -7,14 +7,24 @@ import type {
   BaseModel,
   ChatMessage,
   LogicallySettings,
+  ModelEntity,
   PlanInfo,
   Privilege,
   UserInfo,
   SearchMode,
   SourceNode,
 } from "../types";
-import { DEFAULT_SETTINGS, SEARCH_MODE_TO_TOOL } from "../types";
+import {
+  AI_MODELS,
+  DEFAULT_SETTINGS,
+  ModelCategory,
+  SEARCH_MODE_TO_TOOL,
+} from "../types";
 import { IS_DEV_BUILD } from "../utils/env";
+
+// Module-level caching for models
+let cachedModels: ModelEntity[] | null = null;
+let fetchPromise: Promise<ModelEntity[]> | null = null;
 
 type StreamHandler = {
   onChunk: (chunk: string) => void;
@@ -122,6 +132,7 @@ export class LogicallyApi {
       const response = await requestUrl({
         url: this.getUrl(endpoint),
         method: options.method ?? "GET",
+        throw: false,
         headers: {
           "Content-Type": "application/json",
           ...this.buildAuthHeaders(options.headers),
@@ -131,6 +142,11 @@ export class LogicallyApi {
 
       if (response.status >= 200 && response.status < 300) {
         return { success: true, data: response.json as unknown as T };
+      }
+
+      // Detect auth failure before parseError loses HTTP status
+      if (response.status === 401) {
+        return { success: false, error: "[auth_expired]" };
       }
 
       const errorMessage = this.parseError(
@@ -457,6 +473,53 @@ export class LogicallyApi {
       method: "PUT",
       body: JSON.stringify({ update: { base_model: model } }),
     });
+  }
+
+  /**
+   * Fetch available AI models from backend API.
+   * Returns cached models if available, otherwise fetches from API.
+   * Falls back to static AI_MODELS list on error.
+   */
+  async getModels(): Promise<ModelEntity[]> {
+    if (cachedModels) return cachedModels;
+    if (fetchPromise) return fetchPromise;
+
+    fetchPromise = (async () => {
+      try {
+        const response = await requestUrl({
+          url: this.getUrl("/app/models"),
+          method: "GET",
+        });
+        if (response.status >= 200 && response.status < 300) {
+          const data = response.json as {
+            models: Array<{
+              id: string;
+              display_name: string;
+              description: string;
+              category: string;
+              tag?: string;
+            }>;
+          };
+          cachedModels = data.models
+            .filter((m) => m.id !== "custom")
+            .map((m) => ({
+              id: m.id as BaseModel,
+              name: m.display_name,
+              description: m.description,
+              category:
+                ModelCategory[m.category as keyof typeof ModelCategory] ||
+                ModelCategory.standard,
+              tag: m.tag,
+            }));
+          return cachedModels;
+        }
+      } catch {
+        // Fallback to static list on error
+      }
+      fetchPromise = null;
+      return AI_MODELS;
+    })();
+    return fetchPromise;
   }
 
   private async consumeNodeStream(

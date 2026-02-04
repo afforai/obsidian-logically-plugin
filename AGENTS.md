@@ -13,7 +13,7 @@
 
 ## Environment & Tooling
 
-- **Node.js**: 18+ (LTS)
+- **Node.js**: 24+ (LTS)
 - **Package manager**: pnpm (required; `pnpm-lock.yaml` is canonical)
 - **Bundler**: esbuild (via `esbuild.config.mjs`, outputs `main.js` + `styles.css`)
 - **UI framework**: Svelte 4 (`src/ui/*.svelte` components)
@@ -150,7 +150,7 @@ See [canonical Obsidian validation rules](https://github.com/obsidianmd/obsidian
 
 - **Linting**: `pnpm lint` (ESLint checks TypeScript + Svelte)
 - **Build check**: `pnpm build` (includes `tsc -noEmit` for type safety)
-- **CI**: `.github/workflows/lint.yml` runs on every push (Node 18.x, pnpm)
+- **CI**: `.github/workflows/lint.yml` runs on every push (Node 24.x, pnpm)
 
 No unit test suite yet; rely on manual testing in Obsidian and linting in CI.
 
@@ -580,7 +580,7 @@ export const DEFAULT_SETTINGS: LogicallySettings = {
 
 - Run `pnpm install` to ensure all dependencies are installed
 - Check `tsconfig.json`: Node types must include `https`, `url`
-- Verify Node.js version: `node --version` (should be 18+)
+- Verify Node.js version: `node --version` (should be 24+)
 
 ### Types not recognized
 

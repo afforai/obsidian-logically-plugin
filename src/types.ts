@@ -42,7 +42,10 @@ export interface ModelEntity {
   tag?: string;
 }
 
-/** All available AI models grouped by category */
+/**
+ * Static model list — used as fallback when API unavailable.
+ * Prefer api.getModels() for fresh data.
+ */
 export const AI_MODELS: ModelEntity[] = [
   // Standard models
   {

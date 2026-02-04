@@ -1,6 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher, onMount, onDestroy } from "svelte";
-  import type { BaseModel, Privilege, SearchMode } from "../types";
+  import type { BaseModel, ModelEntity, Privilege, SearchMode } from "../types";
   import { AI_MODELS, ModelCategory, PRIVILEGES } from "../types";
 
   export let disabled = false;
@@ -9,6 +9,8 @@
   export let userPrivileges: Privilege[] = [];
   export let filesExpanded = false;
   export let fileCount = 0;
+  /** Available AI models - defaults to static list, can be overridden with API data */
+  export let models: ModelEntity[] = AI_MODELS;
 
   const dispatch = createEventDispatcher<{
     send: string;
@@ -34,16 +36,16 @@
   $: hasAdvancedAccess = userPrivileges.includes(PRIVILEGES.advanced_models);
   $: hasReasoningAccess = userPrivileges.includes(PRIVILEGES.reasoning_models);
 
-  $: standardModels = AI_MODELS.filter(
+  $: standardModels = models.filter(
     (m) => m.category === ModelCategory.standard,
   );
-  $: advancedModels = AI_MODELS.filter(
+  $: advancedModels = models.filter(
     (m) => m.category === ModelCategory.advanced,
   );
-  $: reasoningModels = AI_MODELS.filter(
+  $: reasoningModels = models.filter(
     (m) => m.category === ModelCategory.reasoning,
   );
-  $: selectedModelInfo = AI_MODELS.find((m) => m.id === selectedModel);
+  $: selectedModelInfo = models.find((m) => m.id === selectedModel);
 
   interface ModeOption {
     id: SearchMode;
@@ -98,7 +100,7 @@
   }
 
   function handleSelectModel(model: BaseModel) {
-    const modelInfo = AI_MODELS.find((m) => m.id === model);
+    const modelInfo = models.find((m) => m.id === model);
     if (!modelInfo) return;
 
     if (modelInfo.category === ModelCategory.advanced && !hasAdvancedAccess) {

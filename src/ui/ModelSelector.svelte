@@ -1,11 +1,13 @@
 <script lang="ts">
   import { createEventDispatcher, onMount, onDestroy } from "svelte";
-  import type { BaseModel, Privilege } from "../types";
+  import type { BaseModel, ModelEntity, Privilege } from "../types";
   import { AI_MODELS, ModelCategory, PRIVILEGES } from "../types";
   import UpgradeModal from "./UpgradeModal.svelte";
 
   export let selectedModel: BaseModel;
   export let userPrivileges: Privilege[] = [];
+  /** Available AI models - defaults to static list, can be overridden with API data */
+  export let models: ModelEntity[] = AI_MODELS;
 
   const dispatch = createEventDispatcher<{ change: BaseModel }>();
 
@@ -20,19 +22,19 @@
   $: hasAdvancedAccess = userPrivileges.includes(PRIVILEGES.advanced_models);
   $: hasReasoningAccess = userPrivileges.includes(PRIVILEGES.reasoning_models);
 
-  $: standardModels = AI_MODELS.filter(
+  $: standardModels = models.filter(
     (m) => m.category === ModelCategory.standard,
   );
-  $: advancedModels = AI_MODELS.filter(
+  $: advancedModels = models.filter(
     (m) => m.category === ModelCategory.advanced,
   );
-  $: reasoningModels = AI_MODELS.filter(
+  $: reasoningModels = models.filter(
     (m) => m.category === ModelCategory.reasoning,
   );
-  $: selectedModelInfo = AI_MODELS.find((m) => m.id === selectedModel);
+  $: selectedModelInfo = models.find((m) => m.id === selectedModel);
 
   function handleSelect(model: BaseModel) {
-    const modelInfo = AI_MODELS.find((m) => m.id === model);
+    const modelInfo = models.find((m) => m.id === model);
     if (!modelInfo) return;
 
     // Check privileges for advanced models
