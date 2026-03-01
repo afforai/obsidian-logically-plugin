@@ -18,7 +18,7 @@
       ? [
           {
             icon: "🚀",
-            title: "GPT-5.1, Claude Sonnet 4.5, Gemini 2.5 Pro",
+            title: "GPT-5.1, Claude Sonnet 4.6, Gemini 2.5 Pro",
           },
           {
             icon: "📚",
@@ -32,7 +32,7 @@
       : [
           {
             icon: "🧠",
-            title: "GPT-5.2, Claude Opus 4.5, Gemini 3 Pro Preview",
+            title: "GPT-5.2, Claude Opus 4.6, Gemini 3.1 Pro Preview",
           },
           {
             icon: "📊",

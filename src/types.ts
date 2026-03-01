@@ -83,14 +83,14 @@ export const AI_MODELS: ModelEntity[] = [
   },
   {
     id: "anthropic_claude_sonnet",
-    name: "Claude Sonnet 4.5",
+    name: "Claude Sonnet 4.6",
     description: "Balanced Claude model for complex tasks",
     category: ModelCategory.advanced,
   },
   // Reasoning models
   {
     id: "gemini_reasoning",
-    name: "Gemini 3 Pro Preview",
+    name: "Gemini 3.1 Pro Preview",
     description: "Optimized for complex reasoning tasks",
     category: ModelCategory.reasoning,
     tag: "Recommended",
@@ -103,7 +103,7 @@ export const AI_MODELS: ModelEntity[] = [
   },
   {
     id: "anthropic_claude_reasoning",
-    name: "Claude Opus 4.5",
+    name: "Claude Opus 4.6",
     description: "Top-tier reasoning capabilities",
     category: ModelCategory.reasoning,
   },
