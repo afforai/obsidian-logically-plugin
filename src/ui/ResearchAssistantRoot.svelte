@@ -847,6 +847,7 @@
         {app}
         searchMode={selectedMode}
         {userName}
+        models={availableModels}
         on:insertToNote={(e) => handleInsertToNote(e.detail)}
         on:deleteFromIndex={(e) => handleDeleteFromIndex(e.detail)}
         on:regenerate={(e) => handleRegenerate(e.detail)}

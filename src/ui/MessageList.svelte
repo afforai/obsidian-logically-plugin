@@ -1,7 +1,12 @@
 <script lang="ts">
   import { onMount, afterUpdate, onDestroy } from "svelte";
   import { MarkdownRenderer, Component, Menu, type App } from "obsidian";
-  import type { ChatMessage, SearchMode, SourceNode } from "../types";
+  import type {
+    ChatMessage,
+    ModelEntity,
+    SearchMode,
+    SourceNode,
+  } from "../types";
   import { AI_MODELS } from "../types";
   import { createEventDispatcher } from "svelte";
   import SourcesTable from "./SourcesTable.svelte";
@@ -32,6 +37,7 @@
   export let app: App;
   export let searchMode: SearchMode = "files";
   export let userName: string = "";
+  export let models: ModelEntity[] = AI_MODELS;
 
   /** Get user initials from name for avatar (e.g., "Shirayuki Nekomata" → "SN") */
   function getUserInitials(name: string): string {
@@ -164,7 +170,7 @@
 
   function getModelName(modelId: string | undefined): string {
     if (!modelId) return "AI";
-    const model = AI_MODELS.find((m) => m.id === modelId);
+    const model = models.find((m) => m.id === modelId);
     return model?.name || modelId;
   }
 
