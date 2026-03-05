@@ -3,8 +3,8 @@
 > **We're in beta!** Thank you for trying out the Logically AI Research Assistant in Obsidian. We'd love your feedback on features, bugs, and ideas for improvement. Please reach out to us at [support@logically.app](mailto:support@logically.app) to share your thoughts, or visit [logically.app](http://logically.app) see how you can use Logically to help you research, cite, and write with AI.
 
 [![Release](https://github.com/afforai/obsidian-logically-plugin/actions/workflows/release.yml/badge.svg)](https://github.com/afforai/obsidian-logically-plugin/actions/workflows/release.yml)
-[![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/afforai/obsidian-logically-plugin?style=flat&sort=semver)](https://github.com/afforai/obsidian-logically-plugin/releases/latest)
-![GitHub All Releases](https://img.shields.io/github/downloads/afforai/obsidian-logically-plugin/total?style=flat)
+[![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/afforai/obsidian-logically-plugin?style=flat&cacheSeconds=3600)](https://github.com/afforai/obsidian-logically-plugin/releases/latest)
+[![GitHub All Releases](https://img.shields.io/github/downloads/afforai/obsidian-logically-plugin/total?style=flat&cacheSeconds=3600)](https://github.com/afforai/obsidian-logically-plugin/releases)
 
 Use Logically’s AI Research Assistant directly inside Obsidian and conduct citation-backed research on the files in your vault.
 
