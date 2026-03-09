@@ -1,4 +1,4 @@
-# Logically AI Research Assistant (Obsidian) — Beta
+# Logically AI Research Assistant (Obsidian) - Beta
 
 > **We're in beta!** Thank you for trying out the Logically AI Research Assistant in Obsidian. We'd love your feedback on features, bugs, and ideas for improvement. Please reach out to us at [support@logically.app](mailto:support@logically.app) to share your thoughts, or visit [logically.app](http://logically.app) see how you can use Logically to help you research, cite, and write with AI.
 
@@ -34,9 +34,9 @@ Use Logically’s AI Research Assistant directly inside Obsidian and conduct cit
 2. Select **Browse** and search for **Logically AI Research Assistant**
 3. Install, then enable the plugin
 
-### Option B - Contact Us
+### Option B - How to install the Beta version directly
 
-If you don’t see Logically listed in the Community Plugins browser, contact [team@logically.app](mailto:team@logically.app), and we will send you a direct bundle that can be installed manually.
+If you don’t see Logically listed in the Community Plugins browser, you can install the plugin directly via this guide instead https://github.com/afforai/obsidian-logically-plugin/blob/master/how-to-install-beta.md
 
 ## Set Up
 
