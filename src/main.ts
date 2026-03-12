@@ -5,6 +5,10 @@ import { DEFAULT_SETTINGS, VIEW_TYPE_RESEARCH_ASSISTANT } from "./types";
 import { LogicallyApi } from "./services/logicallyApi";
 import { LogicallySettingTab } from "./settings";
 import { ResearchAssistantView } from "./views/researchAssistantView";
+import {
+  cancelGoogleLogin as cancelGoogleLoginFlow,
+  startGoogleLogin as startGoogleLoginFlow,
+} from "./auth/googleAuth";
 
 // Logically brand icon (matches frontend logo)
 const LOGICALLY_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 25 26" fill="currentColor">
@@ -90,6 +94,17 @@ export default class LogicallyPluginImpl
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
     this.api.updateSettings(this.settings);
+  }
+
+  async startGoogleLogin(): Promise<string> {
+    const token = await startGoogleLoginFlow();
+    this.settings.googleToken = token;
+    await this.saveSettings();
+    return token;
+  }
+
+  async cancelGoogleLogin(): Promise<void> {
+    await cancelGoogleLoginFlow();
   }
 
   /**

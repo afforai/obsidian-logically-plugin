@@ -181,6 +181,7 @@ export class LogicallySettingTab extends PluginSettingTab {
         } else {
           // Token is invalid, restore the previous account context
           this.plugin.settings.userToken = oldToken;
+          this.plugin.settings.googleToken = "";
           this.plugin.settings.userEmail = oldEmail;
           this.plugin.settings.userPrivileges = oldPrivileges;
           this.plugin.api.updateSettings(this.plugin.settings);
@@ -201,6 +202,7 @@ export class LogicallySettingTab extends PluginSettingTab {
       .addButton((button) => {
         button.setButtonText("Log out").onClick(async () => {
           this.plugin.settings.userToken = "";
+          this.plugin.settings.googleToken = "";
           this.plugin.settings.userPrivileges = [];
           this.plugin.settings.userEmail = "";
           this.plugin.settings.selectedModel = "openai_gpt_5_mini";

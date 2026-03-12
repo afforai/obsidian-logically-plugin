@@ -113,6 +113,8 @@ export const AI_MODELS: ModelEntity[] = [
 export interface LogicallySettings {
   /** User's authentication token */
   userToken: string;
+  /** Google OAuth access token captured from localhost callback */
+  googleToken: string;
   /** API base URL */
   apiUrl: string;
   /** Whether to show the ribbon icon */
@@ -142,6 +144,7 @@ export interface LogicallySettings {
 /** Default settings */
 export const DEFAULT_SETTINGS: LogicallySettings = {
   userToken: "",
+  googleToken: "",
   apiUrl: "https://api.logically.app",
   showRibbon: true,
   selectedModel: "gemini_flash",
@@ -261,5 +264,7 @@ export interface LogicallyPlugin extends Plugin {
 
   loadSettings(): Promise<void>;
   saveSettings(): Promise<void>;
+  startGoogleLogin(): Promise<string>;
+  cancelGoogleLogin(): Promise<void>;
   showRibbon(show: boolean): void;
 }
