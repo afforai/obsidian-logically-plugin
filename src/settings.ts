@@ -203,7 +203,7 @@ export class LogicallySettingTab extends PluginSettingTab {
           this.plugin.settings.userToken = "";
           this.plugin.settings.userPrivileges = [];
           this.plugin.settings.userEmail = "";
-          this.plugin.settings.selectedModel = "openai_gpt_5_mini";
+          this.plugin.settings.selectedModel = DEFAULT_SETTINGS.selectedModel;
           this.plugin.api.logout();
           await this.plugin.saveSettings();
           this.refreshResearchAssistantView();
@@ -302,6 +302,27 @@ export class LogicallySettingTab extends PluginSettingTab {
                 this.plugin.settings.userName =
                   nameParts.join(" ") || this.loginEmail;
                 await this.plugin.saveSettings();
+              }
+
+              // Fetch privileges (matches LoginPrompt.svelte pattern)
+              const planResult = await this.plugin.api.getUserPlan();
+              if (planResult.success && planResult.data) {
+                this.plugin.settings.userPrivileges =
+                  planResult.data.privileges ?? [];
+                if (
+                  planResult.data.has_addon &&
+                  planResult.data.addon_privileges
+                ) {
+                  this.plugin.settings.userPrivileges = [
+                    ...new Set([
+                      ...this.plugin.settings.userPrivileges,
+                      ...planResult.data.addon_privileges,
+                    ]),
+                  ];
+                }
+                this.plugin.api.updateSettings(this.plugin.settings);
+                await this.plugin.saveSettings();
+                this.refreshResearchAssistantView();
               }
 
               this.loginEmail = "";

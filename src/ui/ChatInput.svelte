@@ -1,7 +1,12 @@
 <script lang="ts">
   import { createEventDispatcher, onMount, onDestroy } from "svelte";
   import type { BaseModel, ModelEntity, Privilege, SearchMode } from "../types";
-  import { AI_MODELS, ModelCategory, PRIVILEGES } from "../types";
+  import {
+    AI_MODELS,
+    DEFAULT_SETTINGS,
+    ModelCategory,
+    PRIVILEGES,
+  } from "../types";
 
   export let disabled = false;
   export let selectedModel: BaseModel = "gemini_flash";
@@ -11,6 +16,7 @@
   export let fileCount = 0;
   /** Available AI models - defaults to static list, can be overridden with API data */
   export let models: ModelEntity[] = AI_MODELS;
+  export let isAuthenticated = true;
 
   const dispatch = createEventDispatcher<{
     send: string;
@@ -18,6 +24,7 @@
     modeChange: SearchMode;
     showUpgrade: "advanced" | "reasoning";
     toggleFiles: void;
+    requestLogin: void;
   }>();
 
   let inputValue = "";
@@ -102,6 +109,13 @@
   function handleSelectModel(model: BaseModel) {
     const modelInfo = models.find((m) => m.id === model);
     if (!modelInfo) return;
+
+    // Visitors can only use the default model
+    if (!isAuthenticated && model !== DEFAULT_SETTINGS.selectedModel) {
+      dispatch("requestLogin");
+      modelDropdownOpen = false;
+      return;
+    }
 
     if (modelInfo.category === ModelCategory.advanced && !hasAdvancedAccess) {
       dispatch("showUpgrade", "advanced");
@@ -442,6 +456,7 @@
 
   .ra-input-container:focus-within {
     border-color: var(--interactive-accent);
+    box-shadow: 0 0 0 2px var(--interactive-accent);
   }
 
   textarea {
@@ -449,6 +464,7 @@
     background: transparent;
     border: none;
     outline: none;
+    box-shadow: none;
     resize: none;
     font-size: 14px;
     line-height: 1.5;
@@ -457,6 +473,12 @@
     max-height: 150px;
     font-family: inherit;
     padding: 0;
+  }
+
+  textarea:focus,
+  textarea:focus-visible {
+    outline: none;
+    box-shadow: none;
   }
 
   textarea::placeholder {

@@ -2,13 +2,16 @@
   import { createEventDispatcher } from "svelte";
   import { Notice } from "obsidian";
   import type { LogicallyPlugin } from "../types";
+  import { DEFAULT_SETTINGS } from "../types";
 
   export let plugin: LogicallyPlugin;
   export let isOpen = false;
+  export let isAuthenticated = false;
 
   const dispatch = createEventDispatcher<{
     close: void;
     logout: void;
+    login: void;
   }>();
 
   let customInstruction = plugin.settings.customInstruction ?? "";
@@ -37,7 +40,7 @@
     plugin.settings.userToken = "";
     plugin.settings.userEmail = "";
     plugin.settings.userPrivileges = [];
-    plugin.settings.selectedModel = "openai_gpt_5_mini";
+    plugin.settings.selectedModel = DEFAULT_SETTINGS.selectedModel;
     await plugin.saveSettings();
     dispatch("logout");
     dispatch("close");
@@ -111,26 +114,56 @@
         <!-- Account Section -->
         <div class="ra-settings-section">
           <div class="ra-section-title">Account</div>
-          <div class="ra-account-info">
-            <span class="ra-account-email"
-              >{plugin.settings.userEmail || "Unknown"}</span
-            >
-            <button type="button" class="ra-logout-btn" on:click={handleLogout}>
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
+          {#if isAuthenticated}
+            <div class="ra-account-info">
+              <span class="ra-account-email"
+                >{plugin.settings.userEmail || "Unknown"}</span
               >
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-                <polyline points="16 17 21 12 16 7"></polyline>
-                <line x1="21" y1="12" x2="9" y2="12"></line>
-              </svg>
-              Logout
-            </button>
-          </div>
+              <button
+                type="button"
+                class="ra-logout-btn"
+                on:click={handleLogout}
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                  <polyline points="16 17 21 12 16 7"></polyline>
+                  <line x1="21" y1="12" x2="9" y2="12"></line>
+                </svg>
+                Logout
+              </button>
+            </div>
+          {:else}
+            <div class="ra-login-cta">
+              <p class="ra-login-cta-text">
+                Sign in for full access — unlimited messages, file uploads, and
+                more.
+              </p>
+              <div class="ra-login-cta-actions">
+                <button
+                  type="button"
+                  class="ra-btn ra-btn-primary"
+                  on:click={() => {
+                    dispatch("login");
+                    dispatch("close");
+                  }}>Sign in</button
+                >
+                <button
+                  type="button"
+                  class="ra-btn"
+                  on:click={() =>
+                    window.open("https://logically.app/signup", "_blank")}
+                  >Create account</button
+                >
+              </div>
+            </div>
+          {/if}
         </div>
 
         <!-- Custom Instruction Section -->
@@ -361,5 +394,52 @@
 
   .ra-link-btn:hover {
     text-decoration: none;
+  }
+
+  .ra-login-cta {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    background: var(--background-secondary);
+    border-radius: 8px;
+  }
+
+  .ra-login-cta-text {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  .ra-login-cta-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .ra-btn {
+    padding: 6px 12px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 13px;
+    background: transparent;
+    color: var(--text-normal);
+  }
+
+  .ra-btn:hover {
+    background: var(--background-modifier-hover);
+  }
+
+  .ra-btn-primary {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-color: var(--interactive-accent);
+  }
+
+  .ra-btn-primary:hover {
+    background: var(--interactive-accent-hover);
+    color: var(--text-on-accent);
   }
 </style>

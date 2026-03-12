@@ -366,8 +366,9 @@ export class LogicallyApi {
     searchMode: SearchMode = "files",
     onCitation?: (sources: SourceNode[]) => void,
     fileAttachments?: Array<{ type: "file"; data: string }>,
+    options?: { endpoint?: string; skipAuth?: boolean },
   ): Promise<void> {
-    if (!this.settings.userToken) {
+    if (!options?.skipAuth && !this.settings.userToken) {
       onError("You are not logged in");
       return;
     }
@@ -381,7 +382,7 @@ export class LogicallyApi {
         fileAttachments,
       );
       await this.streamCompletionViaRequestUrl(
-        this.getUrl("/app/completion"),
+        this.getUrl(options?.endpoint ?? "/app/completion"),
         JSON.stringify(payload),
         { onChunk, onComplete, onError, onCitation },
       );

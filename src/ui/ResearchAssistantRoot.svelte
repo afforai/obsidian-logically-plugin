@@ -10,7 +10,7 @@
     SearchMode,
     SourceNode,
   } from "../types";
-  import { AI_MODELS, PRIVILEGES } from "../types";
+  import { AI_MODELS, DEFAULT_SETTINGS, PRIVILEGES } from "../types";
   import ChatInput from "./ChatInput.svelte";
   import MessageList from "./MessageList.svelte";
   import LoginPrompt from "./LoginPrompt.svelte";
@@ -33,15 +33,18 @@
   let filePickerRef: FilePicker | null = null;
   let userPrivileges: Privilege[] = plugin.settings.userPrivileges ?? [];
   let userName: string = plugin.settings.userName ?? "";
+  let loginPromptMode: "none" | "page" | "modal" = "none";
   let maxFiles = 5;
   let lastMaxFiles = maxFiles;
   /** Available AI models - fetched from API or fallback to static list */
   let availableModels: ModelEntity[] = AI_MODELS;
 
+  const VISITOR_MAX_FILES = 3;
   const FREE_MAX_FILES = 5;
   const PAID_MAX_FILES = Infinity;
 
-  function computeMaxFiles(privileges: Privilege[]): number {
+  function computeMaxFiles(privileges: Privilege[], isAuth: boolean): number {
+    if (!isAuth) return VISITOR_MAX_FILES;
     const paidPrivileges: Privilege[] = [
       PRIVILEGES.advanced_models,
       PRIVILEGES.reasoning_models,
@@ -53,7 +56,7 @@
     return isPaid ? PAID_MAX_FILES : FREE_MAX_FILES;
   }
 
-  $: maxFiles = computeMaxFiles(userPrivileges);
+  $: maxFiles = computeMaxFiles(userPrivileges, isAuthenticated);
 
   $: if (maxFiles !== lastMaxFiles) {
     if (contextFiles.length > maxFiles) {
@@ -103,12 +106,20 @@
 
     const update = await plugin.api.updateBaseModel(model);
     if (!update.success) {
-      // Silently handle auth errors - user sees login prompt on next interaction
       if (
         update.error === "[auth_expired]" ||
         update.error === "Not authenticated"
       ) {
+        plugin.settings.userToken = "";
+        plugin.settings.userEmail = "";
+        plugin.settings.userPrivileges = [];
+        plugin.settings.selectedModel = DEFAULT_SETTINGS.selectedModel;
+        selectedModel = DEFAULT_SETTINGS.selectedModel;
+        messages = [];
+        plugin.settings.chatHistory = [];
+        await plugin.saveSettings();
         isAuthenticated = false;
+        new Notice("Your session has expired. Please sign in again.");
         return;
       }
       new Notice(
@@ -189,7 +200,14 @@
    */
   function handleApiError(error: string, assistantMessage: ChatMessage): void {
     // Check for query quota error
-    if (error.includes("query_quota") || error.includes(".query_quota")) {
+    if (
+      error.includes("query_quota") ||
+      error.includes(".query_quota") ||
+      error.includes("daily_quota_exceeded")
+    ) {
+      if (!isAuthenticated) {
+        loginPromptMode = "modal";
+      }
       upsertMessage({
         ...assistantMessage,
         content: `**You've reached your free query limit**\n\nYou've used all your free queries for this period. To continue using Logically's AI research assistant:\n\n- **Upgrade to a paid plan** for unlimited queries\n- Visit [logically.app/pricing](https://logically.app/pricing) to see available plans\n\nYour free quota will reset at the start of the next billing period.`,
@@ -220,25 +238,32 @@
     isLoading = true;
     currentResponse = "";
 
+    const effectiveModel: BaseModel = isAuthenticated
+      ? selectedModel
+      : DEFAULT_SETTINGS.selectedModel;
+
     const assistantMessage: ChatMessage = {
       id: generateId(),
       role: "assistant",
       content: "",
       timestamp: Date.now(),
-      model: selectedModel,
+      model: effectiveModel,
       sources: [],
     };
     messages = [...messages, assistantMessage];
 
     try {
-      // Get file attachments when mode is "files"
+      const effectiveMode: SearchMode = selectedMode;
       const fileAttachments =
-        selectedMode === "files" ? await getContextFromFiles() : [];
+        effectiveMode === "files" ? await getContextFromFiles() : [];
       const customContext = getCustomInstructionContext();
+      const streamOptions = !isAuthenticated
+        ? { endpoint: "/public/visitor/completion", skipAuth: true }
+        : undefined;
 
       await plugin.api.streamMessage(
         text,
-        selectedModel,
+        effectiveModel,
         historyBefore,
         (chunk: string) => {
           currentResponse += chunk;
@@ -268,7 +293,7 @@
         },
         (error: string) => handleApiError(error, assistantMessage),
         customContext,
-        selectedMode,
+        effectiveMode,
         (sources: SourceNode[]) => {
           // Merge API sources with context file sources
           const fileSources = getContextFilesAsSources();
@@ -280,6 +305,7 @@
           });
         },
         fileAttachments,
+        streamOptions,
       );
     } catch (error) {
       console.error("[Logically] Error sending message:", error);
@@ -333,24 +359,32 @@
     isLoading = true;
     currentResponse = "";
 
+    const effectiveModel: BaseModel = isAuthenticated
+      ? selectedModel
+      : DEFAULT_SETTINGS.selectedModel;
+
     const assistantMessage: ChatMessage = {
       id: generateId(),
       role: "assistant",
       content: "",
       timestamp: Date.now(),
-      model: selectedModel,
+      model: effectiveModel,
       sources: [],
     };
     messages = [...messages, assistantMessage];
 
     try {
+      const effectiveMode: SearchMode = selectedMode;
       const fileAttachments =
-        selectedMode === "files" ? await getContextFromFiles() : [];
+        effectiveMode === "files" ? await getContextFromFiles() : [];
       const customContext = getCustomInstructionContext();
+      const streamOptions = !isAuthenticated
+        ? { endpoint: "/public/visitor/completion", skipAuth: true }
+        : undefined;
 
       await plugin.api.streamMessage(
         userMessage.content,
-        selectedModel,
+        effectiveModel,
         historyBefore,
         (chunk: string) => {
           currentResponse += chunk;
@@ -380,7 +414,7 @@
         },
         (error: string) => handleApiError(error, assistantMessage),
         customContext,
-        selectedMode,
+        effectiveMode,
         (sources: SourceNode[]) => {
           // Merge API sources with context file sources
           const fileSources = getContextFilesAsSources();
@@ -392,6 +426,7 @@
           });
         },
         fileAttachments,
+        streamOptions,
       );
     } catch (error) {
       console.error("[Logically] Error regenerating:", error);
@@ -426,15 +461,15 @@
 
           if (source.filetype === "reference" && source.fileid) {
             // Internal Obsidian file link
-            sourceLinks.push(`- [[${source.fileid}]]`);
+            sourceLinks.push(`${sourceLinks.length + 1}. [[${source.fileid}]]`);
           } else if (source.url || source.pdfUrl) {
             // External URL
             const url = source.pdfUrl || source.url;
             const title = source.filename || url;
-            sourceLinks.push(`- [${title}](${url})`);
+            sourceLinks.push(`${sourceLinks.length + 1}. [${title}](${url})`);
           } else {
             // Just filename
-            sourceLinks.push(`- ${source.filename}`);
+            sourceLinks.push(`${sourceLinks.length + 1}. ${source.filename}`);
           }
         }
 
@@ -523,7 +558,7 @@
   function handleLogout() {
     isAuthenticated = false;
     messages = [];
-    selectedModel = "openai_gpt_5_mini";
+    selectedModel = DEFAULT_SETTINGS.selectedModel;
   }
 
   // Drag-and-drop handling (only active when mode is "files")
@@ -693,11 +728,19 @@
   }
 
   function handleLogin() {
+    // Flush visitor messages to settings before login overwrites
+    plugin.settings.chatHistory = messages;
+    void plugin.saveSettings();
+
     isAuthenticated = true;
+    loginPromptMode = "none";
     userPrivileges = plugin.settings.userPrivileges ?? [];
     userName = plugin.settings.userName ?? "";
     selectedModel = plugin.settings.selectedModel;
-    messages = plugin.settings.chatHistory ?? [];
+    // Preserve visitor conversation — only clear if account switch wiped history
+    if (plugin.settings.chatHistory.length === 0) {
+      messages = [];
+    }
   }
 
   function handleShowUpgrade(type: "advanced" | "reasoning") {
@@ -746,9 +789,33 @@
   role="application"
   aria-label="Logically AI research assistant"
 >
-  {#if !isAuthenticated}
-    <LoginPrompt {plugin} on:login={handleLogin} />
+  {#if loginPromptMode !== "none" && !isAuthenticated}
+    <LoginPrompt
+      {plugin}
+      isModal={loginPromptMode === "modal"}
+      on:login={handleLogin}
+      on:dismiss={() => (loginPromptMode = "none")}
+    />
   {:else}
+    {#if !isAuthenticated}
+      <div class="ra-visitor-banner">
+        <span
+          >You're in visitor mode (3 messages/day). Sign in for full access.</span
+        >
+        <div class="ra-visitor-actions">
+          <button
+            class="ra-btn ra-btn-primary"
+            on:click={() => (loginPromptMode = "page")}>Sign in</button
+          >
+          <button
+            class="ra-btn"
+            on:click={() =>
+              window.open("https://logically.app/signup", "_blank")}
+            >Create account</button
+          >
+        </div>
+      </div>
+    {/if}
     <header class="ra-header">
       <div class="ra-title">
         <svg width="18" height="18" viewBox="0 0 25 26" fill="currentColor">
@@ -861,13 +928,17 @@
       on:modeChange={(e) => handleModeChange(e.detail)}
       on:showUpgrade={(e) => handleShowUpgrade(e.detail)}
       on:toggleFiles={handleToggleFiles}
+      on:requestLogin={() => (loginPromptMode = "modal")}
       disabled={isLoading}
-      {selectedModel}
+      selectedModel={isAuthenticated
+        ? selectedModel
+        : DEFAULT_SETTINGS.selectedModel}
       {selectedMode}
-      {userPrivileges}
+      userPrivileges={isAuthenticated ? userPrivileges : []}
       {filesExpanded}
       fileCount={contextFiles.length}
       models={availableModels}
+      {isAuthenticated}
     />
   {/if}
 </div>
@@ -881,8 +952,12 @@
 <SettingsPanel
   {plugin}
   isOpen={showSettingsPanel}
+  {isAuthenticated}
   on:close={() => (showSettingsPanel = false)}
   on:logout={handleLogout}
+  on:login={() => {
+    loginPromptMode = "modal";
+  }}
 />
 
 <style>
@@ -999,5 +1074,31 @@
   .drop-hint {
     font-size: 12px;
     opacity: 0.7;
+  }
+
+  .ra-visitor-banner {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+    background: var(--background-secondary);
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  .ra-visitor-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .ra-btn-primary {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+  }
+
+  .ra-btn-primary:hover:not(:disabled) {
+    background: var(--interactive-accent-hover);
+    color: var(--text-on-accent);
   }
 </style>
