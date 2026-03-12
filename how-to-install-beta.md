@@ -6,7 +6,7 @@ To install the plugin, you must have each of the following:
 
 * Have Obsidian installed
 
-* Install BRAT plugin, **or** download the latest plugin release from <https://github.com/afforai/obsidian-logically-plugin/releases/latest> (obsidian-logically-plugin-0.3.0.zip for example, for release 0.3.0)
+* Install BRAT plugin, **or** download the latest plugin release from <https://github.com/afforai/obsidian-logically-plugin/releases/latest> (obsidian-logically-plugin-0.4.0.zip for example, for release 0.4.0)
 
 ## 2. Installing The Plugin
 
