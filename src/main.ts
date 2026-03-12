@@ -5,6 +5,7 @@ import { DEFAULT_SETTINGS, VIEW_TYPE_RESEARCH_ASSISTANT } from "./types";
 import { LogicallyApi } from "./services/logicallyApi";
 import { LogicallySettingTab } from "./settings";
 import { ResearchAssistantView } from "./views/researchAssistantView";
+import { createAutoSuggestExtension } from "./editor/autoSuggest/extension";
 import {
   cancelGoogleLogin as cancelGoogleLoginFlow,
   startGoogleLogin as startGoogleLoginFlow,
@@ -48,6 +49,9 @@ export default class LogicallyPluginImpl
       VIEW_TYPE_RESEARCH_ASSISTANT,
       (leaf: WorkspaceLeaf) => new ResearchAssistantView(leaf, this),
     );
+
+    // Register inline editor auto-suggest extension
+    this.registerEditorExtension(createAutoSuggestExtension(this));
 
     // Add settings tab
     this.addSettingTab(new LogicallySettingTab(this.app, this));

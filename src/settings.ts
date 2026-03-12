@@ -90,6 +90,34 @@ export class LogicallySettingTab extends PluginSettingTab {
           });
       });
 
+    new Setting(containerEl)
+      .setName("Enable auto suggest")
+      .setDesc(
+        "Show inline ghost suggestion while typing in the Markdown editor.",
+      )
+      .addToggle((toggle) => {
+        toggle
+          .setValue(this.plugin.settings.autoSuggestEnabled)
+          .onChange(async (value) => {
+            this.plugin.settings.autoSuggestEnabled = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Auto suggest debounce (ms)")
+      .setDesc("Delay before requesting suggestion after typing stops.")
+      .addSlider((slider) => {
+        slider
+          .setLimits(200, 1500, 50)
+          .setValue(this.plugin.settings.autoSuggestDebounceMs)
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            this.plugin.settings.autoSuggestDebounceMs = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
     // Advanced section
     new Setting(containerEl).setName("Advanced").setHeading();
 

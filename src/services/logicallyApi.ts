@@ -3,6 +3,8 @@ import type { RequestUrlParam } from "obsidian";
 import * as https from "https";
 import { URL } from "url";
 import type {
+  AutoSuggestOptions,
+  AutoSuggestResponse,
   ApiResponse,
   BaseModel,
   ChatMessage,
@@ -302,6 +304,61 @@ export class LogicallyApi {
    */
   async getUserPlan(): Promise<ApiResponse<PlanInfo>> {
     return this.request<PlanInfo>("/plan");
+  }
+
+  /**
+   * Request inline auto-suggest text for editor continuation.
+   * Uses visitor endpoint because Obsidian notes do not map to backend document IDs.
+   */
+  async getAutoSuggestion(
+    text: string,
+    documentId: string,
+    signal: AbortSignal,
+    options?: AutoSuggestOptions,
+  ): Promise<ApiResponse<AutoSuggestResponse>> {
+    if (signal.aborted) {
+      return { success: false, error: "Request aborted" };
+    }
+
+    try {
+      const response = await requestUrl({
+        method: "POST",
+        url: this.getUrl("/public/visitor/autosuggest"),
+        throw: false,
+        contentType: "application/json",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ text, documentId, options }),
+      });
+
+      if (signal.aborted) {
+        return { success: false, error: "Request aborted" };
+      }
+
+      if (response.status < 200 || response.status >= 300) {
+        return {
+          success: false,
+          error:
+            `Suggest API failed: ${response.status} ${this.parseError(response.json as unknown, response.status)}`.trim(),
+        };
+      }
+
+      const json = response.json as { suggestion?: string };
+
+      return {
+        success: true,
+        data: {
+          suggestion: json.suggestion ?? "",
+        },
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error:
+          error instanceof Error ? error.message : "Autosuggest request failed",
+      };
+    }
   }
 
   /**

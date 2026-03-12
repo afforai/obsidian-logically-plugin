@@ -55,6 +55,8 @@
     "typescript-eslint": "8.50.0"
   },
   "dependencies": {
+    "@codemirror/state": "^6.5.4",
+    "@codemirror/view": "^6.39.17",
     "obsidian": "latest"
   },
   "nano-staged": {

@@ -139,6 +139,10 @@ export interface LogicallySettings {
   customInstruction: string;
   /** Last successfully logged in email - used to detect account switches and wipe history */
   lastLoggedInEmail: string;
+  /** Enable inline auto-suggest in editor */
+  autoSuggestEnabled: boolean;
+  /** Debounce interval before auto-suggest API call */
+  autoSuggestDebounceMs: number;
 }
 
 /** Default settings */
@@ -157,6 +161,8 @@ export const DEFAULT_SETTINGS: LogicallySettings = {
   userName: "",
   customInstruction: "",
   lastLoggedInEmail: "",
+  autoSuggestEnabled: false,
+  autoSuggestDebounceMs: 500,
 };
 
 /** Source node from AI response (citation data) */
@@ -253,6 +259,19 @@ export interface ApiResponse<T> {
   success: boolean;
   data?: T;
   error?: string;
+}
+
+/** Auto-suggest options forwarded to backend */
+export interface AutoSuggestOptions {
+  regenerate?: boolean;
+  temperature?: number;
+  citationStyle?: string;
+  model?: string;
+}
+
+/** Auto-suggest response payload */
+export interface AutoSuggestResponse {
+  suggestion: string;
 }
 
 /** Plugin interface for type safety */

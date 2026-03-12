@@ -95,3 +95,11 @@
 .logically-research-assistant-container .message-content::selection {
   background: var(--text-selection);
 }
+
+/* Inline editor auto-suggest ghost text */
+.ra-auto-suggest-ghost-inline {
+  opacity: 0.45;
+  color: var(--text-muted);
+  pointer-events: none;
+  white-space: pre-wrap;
+}
