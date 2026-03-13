@@ -97,7 +97,7 @@ export const AI_MODELS: ModelEntity[] = [
   },
   {
     id: "openai_reasoning",
-    name: "GPT-5.2",
+    name: "GPT-5.4",
     description: "Advanced reasoning with step-by-step analysis",
     category: ModelCategory.reasoning,
   },

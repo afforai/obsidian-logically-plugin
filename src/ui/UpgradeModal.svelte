@@ -32,7 +32,7 @@
       : [
           {
             icon: "🧠",
-            title: "GPT-5.2, Claude Opus 4.6, Gemini 3.1 Pro Preview",
+            title: "GPT-5.4, Claude Opus 4.6, Gemini 3.1 Pro Preview",
           },
           {
             icon: "📊",
