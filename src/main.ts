@@ -97,10 +97,7 @@ export default class LogicallyPluginImpl
   }
 
   async startGoogleLogin(): Promise<string> {
-    const token = await startGoogleLoginFlow();
-    this.settings.googleToken = token;
-    await this.saveSettings();
-    return token;
+    return await startGoogleLoginFlow();
   }
 
   async cancelGoogleLogin(): Promise<void> {

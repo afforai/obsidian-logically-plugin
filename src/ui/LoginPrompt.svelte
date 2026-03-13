@@ -3,7 +3,8 @@
   import { Notice } from "obsidian";
   import type { LogicallyPlugin } from "../types";
   import { formatAuthError } from "../utils/authErrors";
-  import Login from "./Login.svelte";
+  import { handleAccountSwitch } from "../utils/accountSwitch";
+  import GoogleLogin from "./GoogleLogin.svelte";
 
   export let plugin: LogicallyPlugin;
 
@@ -13,24 +14,6 @@
   let password = "";
   let isLoading = false;
   let error = "";
-
-  /**
-   * Check if logging in as a different user than before, and wipe history if so.
-   * This protects user privacy when switching accounts.
-   */
-  function handleAccountSwitch(newEmail: string): void {
-    const lastEmail = plugin.settings.lastLoggedInEmail;
-    if (lastEmail && lastEmail.toLowerCase() !== newEmail.toLowerCase()) {
-      // Different user! Wipe chat history to protect privacy
-      plugin.settings.chatHistory = [];
-      new Notice(
-        "Welcome! Your previous chat history has been cleared for privacy.",
-        5000,
-      );
-    }
-    // Update the last logged in email
-    plugin.settings.lastLoggedInEmail = newEmail.toLowerCase();
-  }
 
   async function handleLogin() {
     if (!email || !password) {
@@ -47,8 +30,7 @@
       plugin.settings.userToken = result.data.token;
       plugin.settings.userEmail = email;
 
-      // Check for account switch and wipe history if needed
-      handleAccountSwitch(email);
+      handleAccountSwitch(plugin.settings, email);
 
       await plugin.saveSettings();
       plugin.api.updateSettings(plugin.settings);
@@ -57,17 +39,14 @@
       const userResult = await plugin.api.getCurrentUser();
       if (userResult.success && userResult.data) {
         const user = userResult.data;
-        // Build full name from first/last
         const nameParts = [user.first, user.last].filter(Boolean);
         plugin.settings.userName = nameParts.join(" ") || user.email;
         await plugin.saveSettings();
       }
 
-      // Fetch user privileges after login
       const planResult = await plugin.api.getUserPlan();
       if (planResult.success && planResult.data) {
         plugin.settings.userPrivileges = planResult.data.privileges ?? [];
-        // Also include addon privileges if user has addon
         if (planResult.data.has_addon && planResult.data.addon_privileges) {
           plugin.settings.userPrivileges = [
             ...new Set([
@@ -196,7 +175,7 @@
       <span>or</span>
     </div>
 
-    <Login {plugin} on:login={handleGoogleLoginSuccess} />
+    <GoogleLogin {plugin} on:login={handleGoogleLoginSuccess} />
   </div>
 
   <div class="login-footer">

@@ -10,8 +10,8 @@ const CALLBACK_HTML = `<!doctype html>
   <body>
     <p>You can close this tab now.</p>
     <script>
-      const hash = location.hash.substring(1)
-      fetch("/token?" + hash)
+      const hash = location.hash.substring(1);
+      fetch("/token?" + hash);
     </script>
   </body>
 </html>`;
@@ -51,6 +51,7 @@ function closeServer(server: Server): Promise<void> {
 
 export async function createLocalOAuthServer(
   port: number,
+  expectedState: string,
   timeoutMs = 120_000,
 ): Promise<LocalOAuthServer> {
   const tokenDeferred = createDeferred<string>();
@@ -81,6 +82,22 @@ export async function createLocalOAuthServer(
           "Content-Type": "text/plain; charset=utf-8",
         });
         response.end("Google login failed. You can close this tab.");
+        return;
+      }
+
+      // Validate CSRF state parameter
+      const returnedState = url.searchParams.get("state");
+      if (returnedState !== expectedState) {
+        if (!isSettled) {
+          isSettled = true;
+          tokenDeferred.reject(
+            new Error("OAuth state mismatch — possible CSRF attack"),
+          );
+        }
+        response.writeHead(400, {
+          "Content-Type": "text/plain; charset=utf-8",
+        });
+        response.end("Security validation failed. You can close this tab.");
         return;
       }
 

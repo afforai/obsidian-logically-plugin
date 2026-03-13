@@ -3,6 +3,7 @@ import type { LogicallyPlugin, LogicallySettings } from "./types";
 import { DEFAULT_SETTINGS, VIEW_TYPE_RESEARCH_ASSISTANT } from "./types";
 import { IS_DEV_BUILD } from "./utils/env";
 import { formatAuthError } from "./utils/authErrors";
+import { handleAccountSwitch } from "./utils/accountSwitch";
 
 /**
  * Settings tab for the Logically plugin.
@@ -155,20 +156,11 @@ export class LogicallySettingTab extends PluginSettingTab {
           // Token is valid, fetch user plan for privileges
           const planResult = await this.plugin.api.getUserPlan();
 
-          const newEmail = (result.data.email || "").toLowerCase();
-          const lastEmail = this.plugin.settings.lastLoggedInEmail;
+          const newEmail = result.data.email || "";
 
-          // Check for account switch - wipe history if different user
-          if (lastEmail && lastEmail !== newEmail) {
-            this.plugin.settings.chatHistory = [];
-            new Notice(
-              "Welcome! Your previous chat history has been cleared for privacy.",
-              5000,
-            );
-          }
+          handleAccountSwitch(this.plugin.settings, newEmail);
 
           this.plugin.settings.userEmail = result.data.email || "";
-          this.plugin.settings.lastLoggedInEmail = newEmail;
           this.plugin.settings.userPrivileges =
             planResult.data?.privileges || result.data.privileges || [];
           this.plugin.api.updateSettings(this.plugin.settings);
@@ -181,7 +173,6 @@ export class LogicallySettingTab extends PluginSettingTab {
         } else {
           // Token is invalid, restore the previous account context
           this.plugin.settings.userToken = oldToken;
-          this.plugin.settings.googleToken = "";
           this.plugin.settings.userEmail = oldEmail;
           this.plugin.settings.userPrivileges = oldPrivileges;
           this.plugin.api.updateSettings(this.plugin.settings);
@@ -202,7 +193,6 @@ export class LogicallySettingTab extends PluginSettingTab {
       .addButton((button) => {
         button.setButtonText("Log out").onClick(async () => {
           this.plugin.settings.userToken = "";
-          this.plugin.settings.googleToken = "";
           this.plugin.settings.userPrivileges = [];
           this.plugin.settings.userEmail = "";
           this.plugin.settings.selectedModel = "openai_gpt_5_mini";
@@ -280,20 +270,11 @@ export class LogicallySettingTab extends PluginSettingTab {
             button.setButtonText("Log in");
 
             if (result.success && result.data) {
-              const newEmail = this.loginEmail.toLowerCase();
-              const lastEmail = this.plugin.settings.lastLoggedInEmail;
+              const newEmail = this.loginEmail;
 
-              // Check for account switch - wipe history if different user
-              if (lastEmail && lastEmail !== newEmail) {
-                this.plugin.settings.chatHistory = [];
-                new Notice(
-                  "Welcome! Your previous chat history has been cleared for privacy.",
-                  5000,
-                );
-              }
+              handleAccountSwitch(this.plugin.settings, newEmail);
 
               this.plugin.settings.userToken = result.data.token;
-              this.plugin.settings.lastLoggedInEmail = newEmail;
               await this.plugin.saveSettings();
 
               // Fetch user profile to get name

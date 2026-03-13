@@ -2,6 +2,8 @@
   import { createEventDispatcher } from "svelte";
   import { Notice } from "obsidian";
   import type { LogicallyPlugin } from "../types";
+  import { formatAuthError } from "../utils/authErrors";
+  import { handleAccountSwitch } from "../utils/accountSwitch";
 
   export let plugin: LogicallyPlugin;
 
@@ -24,19 +26,12 @@
         throw new Error(result.error || "Google login failed");
       }
 
-      const resolvedEmail = (
-        result.data.email ||
-        result.data.user.email ||
-        ""
-      ).toLowerCase();
-      const lastEmail = plugin.settings.lastLoggedInEmail;
-      if (lastEmail && resolvedEmail && lastEmail !== resolvedEmail) {
-        plugin.settings.chatHistory = [];
-      }
+      const resolvedEmail = result.data.email || result.data.user.email || "";
+
+      handleAccountSwitch(plugin.settings, resolvedEmail);
 
       plugin.settings.userToken = result.data.token;
       plugin.settings.userEmail = result.data.user.email || result.data.email;
-      plugin.settings.lastLoggedInEmail = resolvedEmail;
 
       const planResult = await plugin.api.getUserPlan();
       if (planResult.success && planResult.data) {
@@ -63,8 +58,8 @@
         return;
       }
 
-      error = message;
-      new Notice(message, 5000);
+      error = formatAuthError(message);
+      new Notice(error, 5000);
     } finally {
       isLoading = false;
     }

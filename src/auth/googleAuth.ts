@@ -1,4 +1,4 @@
-import { requestUrl } from "obsidian";
+import { randomBytes } from "crypto";
 import { shell } from "electron";
 import { createLocalOAuthServer } from "./localServer";
 
@@ -9,7 +9,11 @@ const GOOGLE_CLIENT_ID =
 
 let activeLoginSession: { close: () => Promise<void> } | null = null;
 
-export function buildGoogleOAuthUrl(port: number): string {
+function generateState(): string {
+  return randomBytes(32).toString("hex");
+}
+
+export function buildGoogleOAuthUrl(port: number, state: string): string {
   const redirectUri = `http://127.0.0.1:${port}`;
   const scope = "openid email profile";
 
@@ -19,18 +23,20 @@ export function buildGoogleOAuthUrl(port: number): string {
     response_type: "token",
     scope,
     prompt: "consent",
+    state,
   });
 
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 }
 
-async function createServerWithPortFallback() {
+async function createServerWithPortFallback(state: string) {
   let lastError: unknown = null;
 
   for (const port of GOOGLE_OAUTH_PORT_CANDIDATES) {
     try {
       const server = await createLocalOAuthServer(
         port,
+        state,
         GOOGLE_OAUTH_TIMEOUT_MS,
       );
       return { server, port };
@@ -74,11 +80,13 @@ export async function startGoogleLogin(): Promise<string> {
     throw new Error("Google OAuth client ID is not configured");
   }
 
-  const { server: localServer, port } = await createServerWithPortFallback();
+  const state = generateState();
+  const { server: localServer, port } =
+    await createServerWithPortFallback(state);
   activeLoginSession = { close: localServer.close };
 
   try {
-    const oauthUrl = buildGoogleOAuthUrl(port);
+    const oauthUrl = buildGoogleOAuthUrl(port, state);
     await openExternal(oauthUrl);
     const accessToken = await localServer.waitForToken();
 
@@ -87,9 +95,6 @@ export async function startGoogleLogin(): Promise<string> {
     }
 
     return accessToken;
-  } catch (error) {
-    await localServer.close().catch(() => undefined);
-    throw error;
   } finally {
     activeLoginSession = null;
   }
@@ -101,27 +106,4 @@ export async function cancelGoogleLogin(): Promise<void> {
 
   await session.close().catch(() => undefined);
   activeLoginSession = null;
-}
-
-export async function callBackend(
-  token: string,
-  endpoint = "https://api.logically.app/user",
-): Promise<unknown> {
-  const response = await requestUrl({
-    url: endpoint,
-    method: "GET",
-    throw: false,
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (response.status < 200 || response.status >= 300) {
-    const message =
-      (response.json as { message?: string } | undefined)?.message ||
-      `Backend call failed with status ${response.status}`;
-    throw new Error(message);
-  }
-
-  return response.json as unknown;
 }
