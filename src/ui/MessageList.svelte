@@ -1,6 +1,12 @@
 <script lang="ts">
   import { onMount, afterUpdate, onDestroy } from "svelte";
-  import { MarkdownRenderer, Component, Menu, type App } from "obsidian";
+  import {
+    MarkdownRenderer,
+    Component,
+    Menu,
+    Notice,
+    type App,
+  } from "obsidian";
   import type {
     ChatMessage,
     ModelEntity,
@@ -10,6 +16,7 @@
   import { AI_MODELS } from "../types";
   import { createEventDispatcher } from "svelte";
   import SourcesTable from "./SourcesTable.svelte";
+  import { copyToClipboard } from "../utils/clipboard";
 
   /** Escape HTML special characters to prevent XSS */
   function escapeHtml(str: string): string {
@@ -163,11 +170,6 @@
   // Create a Component instance for MarkdownRenderer to avoid memory leaks
   let markdownComponent: Component;
 
-  // Copy popover state
-  let copyPopoverEl: HTMLElement | null = null;
-  let copyPopoverMessage: ChatMessage | null = null;
-  let copyPopoverPosition = { x: 0, y: 0 };
-
   function getModelName(modelId: string | undefined): string {
     if (!modelId) return "AI";
     const model = models.find((m) => m.id === modelId);
@@ -215,40 +217,39 @@
     dispatch("regenerate", index);
   }
 
-  function handleCopy(message: ChatMessage) {
-    dispatch("copy", message);
-  }
-
   function handleOpenFilePicker() {
     dispatch("openFilePicker");
   }
 
   function showCopyPopover(event: MouseEvent, message: ChatMessage) {
-    const target = event.currentTarget as HTMLElement;
-    const rect = target.getBoundingClientRect();
-    copyPopoverPosition = { x: rect.left, y: rect.bottom + 4 };
-    copyPopoverMessage = message;
-  }
-
-  function hideCopyPopover() {
-    copyPopoverMessage = null;
-  }
-
-  async function copyMessageContent(withFootnotes: boolean) {
-    if (!copyPopoverMessage) return;
-    let content = copyPopoverMessage.content || "";
-    if (withFootnotes) {
-      // Convert citation tokens to Obsidian footnotes with definitions
-      content = convertCitationsToFootnotes(
-        content,
-        copyPopoverMessage.sources,
-      );
-    } else {
-      // Strip citation tokens entirely
-      content = content.replace(/【\d+†[^】]*】/g, "");
-    }
-    await navigator.clipboard.writeText(content);
-    hideCopyPopover();
+    const menu = new Menu();
+    menu.addItem((item) =>
+      item
+        .setTitle("Copy with footnotes")
+        .setIcon("copy")
+        .onClick(async () => {
+          const content = convertCitationsToFootnotes(
+            message.content || "",
+            message.sources,
+          );
+          const ok = await copyToClipboard(content);
+          new Notice(ok ? "Copied to clipboard" : "Failed to copy");
+        }),
+    );
+    menu.addItem((item) =>
+      item
+        .setTitle("Copy without citations")
+        .setIcon("copy")
+        .onClick(async () => {
+          const content = (message.content || "").replace(
+            /【\d+†[^】]*】/g,
+            "",
+          );
+          const ok = await copyToClipboard(content);
+          new Notice(ok ? "Copied to clipboard" : "Failed to copy");
+        }),
+    );
+    menu.showAtMouseEvent(event);
   }
 
   function handleContextMenu(
@@ -282,7 +283,8 @@
               message.content || "",
               message.sources,
             );
-            await navigator.clipboard.writeText(content);
+            const ok = await copyToClipboard(content);
+            new Notice(ok ? "Copied to clipboard" : "Failed to copy");
           }),
       );
       menu.addItem((item) =>
@@ -294,7 +296,8 @@
               /【\d+†[^】]*】/g,
               "",
             );
-            await navigator.clipboard.writeText(content);
+            const ok = await copyToClipboard(content);
+            new Notice(ok ? "Copied to clipboard" : "Failed to copy");
           }),
       );
       menu.addItem((item) =>
@@ -550,35 +553,6 @@
         </div>
       </div>
     {/each}
-
-    <!-- Copy popover -->
-    {#if copyPopoverMessage}
-      <!-- svelte-ignore a11y-no-static-element-interactions -->
-      <div
-        class="copy-popover-backdrop"
-        on:click={hideCopyPopover}
-        on:keydown={(e) => e.key === "Escape" && hideCopyPopover()}
-      ></div>
-      <div
-        class="copy-popover"
-        style="left: {copyPopoverPosition.x}px; top: {copyPopoverPosition.y}px;"
-      >
-        <button
-          type="button"
-          class="copy-popover-item"
-          on:click={() => copyMessageContent(true)}
-        >
-          Copy with footnotes
-        </button>
-        <button
-          type="button"
-          class="copy-popover-item"
-          on:click={() => copyMessageContent(false)}
-        >
-          Copy without citations
-        </button>
-      </div>
-    {/if}
 
     {#if isLoading && !messages.find((m) => m.content === currentResponse)}
       <div class="message assistant loading">
@@ -985,41 +959,5 @@
   .message-row.assistant .message-content :global(.ra-citation-link a:hover) {
     background: var(--interactive-accent);
     color: var(--text-on-accent);
-  }
-
-  /* Copy popover */
-  .copy-popover-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 999;
-  }
-
-  .copy-popover {
-    position: fixed;
-    z-index: 1000;
-    background: var(--background-primary);
-    border: 1px solid var(--background-modifier-border);
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    padding: 4px;
-    min-width: 180px;
-  }
-
-  .copy-popover-item {
-    display: block;
-    width: 100%;
-    padding: 8px 12px;
-    background: none;
-    border: none;
-    border-radius: 4px;
-    text-align: left;
-    font-size: 13px;
-    color: var(--text-normal);
-    cursor: pointer;
-    transition: background 0.1s ease;
-  }
-
-  .copy-popover-item:hover {
-    background: var(--background-modifier-hover);
   }
 </style>
