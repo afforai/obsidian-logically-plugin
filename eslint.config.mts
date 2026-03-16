@@ -47,6 +47,7 @@ export default tseslint.config(
       "import/no-nodejs-modules": "off",
       // Allow console.log during development - we use it sparingly for plugin lifecycle
       "no-console": ["warn", { allow: ["warn", "error", "debug", "log"] }],
+      "obsidianmd/ui/sentence-case": "off", // Allow sentence case in UI text for better readability
     },
   },
   // Prettier config must be last to override formatting rules

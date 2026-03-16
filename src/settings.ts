@@ -90,6 +90,65 @@ export class LogicallySettingTab extends PluginSettingTab {
           });
       });
 
+    // Auto-suggest configuration
+    new Setting(containerEl).setName("Auto-suggest").setHeading();
+
+    new Setting(containerEl)
+      .setName("Enable auto-suggest")
+      .setDesc(
+        "Show AI-powered writing suggestions as you type. Press Tab to accept, Esc to dismiss.",
+      )
+      .addToggle((toggle) => {
+        toggle
+          .setValue(this.plugin.settings.autoSuggestEnabled)
+          .onChange(async (value) => {
+            this.plugin.settings.autoSuggestEnabled = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Suggestion delay")
+      .setDesc(
+        "How long to wait (ms) after you stop typing before requesting a suggestion.",
+      )
+      .addSlider((slider) => {
+        slider
+          .setLimits(300, 2000, 100)
+          .setValue(this.plugin.settings.autoSuggestDelay)
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            this.plugin.settings.autoSuggestDelay = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Use internal sources")
+      .setDesc("Include your uploaded documents as context for suggestions.")
+      .addToggle((toggle) => {
+        toggle
+          .setValue(this.plugin.settings.autoSuggestInternalSource)
+          .onChange(async (value) => {
+            this.plugin.settings.autoSuggestInternalSource = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Use external sources")
+      .setDesc(
+        "Include academic papers (Semantic Scholar) as context for suggestions.",
+      )
+      .addToggle((toggle) => {
+        toggle
+          .setValue(this.plugin.settings.autoSuggestExternalSource)
+          .onChange(async (value) => {
+            this.plugin.settings.autoSuggestExternalSource = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
     // Advanced section
     new Setting(containerEl).setName("Advanced").setHeading();
 

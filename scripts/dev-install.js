@@ -16,6 +16,19 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Load .env from project root if it exists
+const envPath = path.join(__dirname, "..", ".env");
+if (fs.existsSync(envPath)) {
+  fs.readFileSync(envPath, "utf8")
+    .split("\n")
+    .filter((line) => line.trim() && !line.startsWith("#"))
+    .forEach((line) => {
+      const [key, ...rest] = line.split("=");
+      const val = rest.join("=").replace(/^["']|["']$/g, "").trim();
+      if (key && !(key.trim() in process.env)) process.env[key.trim()] = val;
+    });
+}
+
 function exitWithMsg(msg) {
   console.error(msg);
   process.exit(1);

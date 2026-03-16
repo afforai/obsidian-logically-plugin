@@ -137,6 +137,14 @@ export interface LogicallySettings {
   customInstruction: string;
   /** Last successfully logged in email - used to detect account switches and wipe history */
   lastLoggedInEmail: string;
+  /** Whether auto-suggest is enabled */
+  autoSuggestEnabled: boolean;
+  /** Debounce delay in ms before triggering auto-suggest */
+  autoSuggestDelay: number;
+  /** Use internal sources (user's uploaded files) for suggestions */
+  autoSuggestInternalSource: boolean;
+  /** Use external sources (Semantic Scholar) for suggestions */
+  autoSuggestExternalSource: boolean;
 }
 
 /** Default settings */
@@ -154,6 +162,10 @@ export const DEFAULT_SETTINGS: LogicallySettings = {
   userName: "",
   customInstruction: "",
   lastLoggedInEmail: "",
+  autoSuggestEnabled: true,
+  autoSuggestDelay: 500,
+  autoSuggestInternalSource: true,
+  autoSuggestExternalSource: true,
 };
 
 /** Source node from AI response (citation data) */
@@ -262,4 +274,31 @@ export interface LogicallyPlugin extends Plugin {
   loadSettings(): Promise<void>;
   saveSettings(): Promise<void>;
   showRibbon(show: boolean): void;
+}
+
+/** Auto-suggest API response */
+export interface AutoSuggestResponse {
+  suggestion: string;
+  source?: {
+    id: string;
+    DOI?: string;
+    fileID?: string;
+    source: "internal" | "external";
+    csl_item: Record<string, unknown>;
+  };
+  meta?: {
+    sourceChoice: "internal" | "external" | "none";
+    regenerate: boolean;
+    quota: AutoSuggestQuota;
+  };
+}
+
+/** Auto-suggest quota info */
+export interface AutoSuggestQuota {
+  used: number;
+  limit: number;
+  remaining: number;
+  hit?: boolean;
+  can_accept?: boolean;
+  date: string;
 }

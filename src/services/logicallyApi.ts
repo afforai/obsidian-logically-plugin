@@ -4,6 +4,8 @@ import * as https from "https";
 import { URL } from "url";
 import type {
   ApiResponse,
+  AutoSuggestQuota,
+  AutoSuggestResponse,
   BaseModel,
   ChatMessage,
   LogicallySettings,
@@ -656,6 +658,53 @@ export class LogicallyApi {
       body.on("end", onEnd);
       body.on("error", onError);
     });
+  }
+
+  /**
+   * Request an auto-suggestion from the backend.
+   */
+  async getAutoSuggestion(params: {
+    text: string;
+    model?: string;
+    options?: {
+      regenerate?: boolean;
+      temperature?: number;
+      is_internal_source?: boolean;
+      is_external_source?: boolean;
+    };
+  }): Promise<ApiResponse<AutoSuggestResponse>> {
+    return this.request<AutoSuggestResponse>("/obsidian/autosuggest/suggest", {
+      method: "POST",
+      body: JSON.stringify({
+        text: params.text,
+        model: params.model,
+        options: params.options,
+      }),
+    });
+  }
+
+  /**
+   * Record acceptance of an auto-suggestion (increments daily quota for free users).
+   */
+  async acceptAutoSuggestion(params?: {
+    regenerate?: boolean;
+  }): Promise<ApiResponse<AutoSuggestQuota>> {
+    return this.request<AutoSuggestQuota>(
+      "/obsidian/autosuggest/suggest/accept",
+      {
+        method: "POST",
+        body: JSON.stringify({ regenerate: params?.regenerate ?? false }),
+      },
+    );
+  }
+
+  /**
+   * Get current daily auto-suggest quota.
+   */
+  async getAutoSuggestQuota(): Promise<ApiResponse<AutoSuggestQuota>> {
+    return this.request<AutoSuggestQuota>(
+      "/obsidian/autosuggest/suggest/daily-quota",
+    );
   }
 
   /**
