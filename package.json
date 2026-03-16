@@ -6,6 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "node esbuild.config.mjs",
+    "dev:build": "node esbuild.config.mjs dev-build",
+    "dev:build:install": "node esbuild.config.mjs dev-build && node scripts/dev-install.js",
     "dev:install": "pnpm run build && node scripts/dev-install.js",
     "dev:watch": "concurrently -k \"pnpm dev\" \"chokidar 'main.js' 'styles.css' -c 'pnpm dev:install'\"",
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",

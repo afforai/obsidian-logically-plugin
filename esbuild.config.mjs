@@ -11,6 +11,7 @@ if you want to view the source, please visit the github repository of this plugi
 `;
 
 const prod = process.argv[2] === "production";
+const devBuild = process.argv[2] === "dev-build";
 
 const context = await esbuild.context({
   banner: {
@@ -55,7 +56,7 @@ const context = await esbuild.context({
   ],
 });
 
-if (prod) {
+if (prod || devBuild) {
   await context.rebuild();
   process.exit(0);
 } else {
