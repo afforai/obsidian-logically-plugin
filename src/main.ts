@@ -1,10 +1,13 @@
 import { addIcon, Plugin, WorkspaceLeaf } from "obsidian";
-import type { App, PluginManifest } from "obsidian";
+import type { App, Editor, MarkdownView, PluginManifest } from "obsidian";
+import type { EditorView } from "@codemirror/view";
 import type { LogicallyPlugin, LogicallySettings } from "./types";
 import { DEFAULT_SETTINGS, VIEW_TYPE_RESEARCH_ASSISTANT } from "./types";
 import { LogicallyApi } from "./services/logicallyApi";
 import { LogicallySettingTab } from "./settings";
 import { ResearchAssistantView } from "./views/researchAssistantView";
+import { ghostTextExtension } from "./extensions/ghostText";
+import { AutoSuggestService } from "./services/autoSuggestService";
 
 // Logically brand icon (matches frontend logo)
 const LOGICALLY_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 25 26" fill="currentColor">
@@ -23,6 +26,7 @@ export default class LogicallyPluginImpl
   api: LogicallyApi;
   researchAssistantView: ResearchAssistantView | null = null;
   ribbon: HTMLElement | null = null;
+  private autoSuggestService: AutoSuggestService | null = null;
 
   constructor(app: App, manifest: PluginManifest) {
     super(app, manifest);
@@ -69,10 +73,46 @@ export default class LogicallyPluginImpl
       },
     });
 
+    // Add command to toggle auto-suggest
+    this.addCommand({
+      id: "toggle-autosuggest",
+      name: "Toggle auto-suggest",
+      callback: () => {
+        this.settings.autoSuggestEnabled = !this.settings.autoSuggestEnabled;
+        void this.saveSettings();
+        this.autoSuggestService?.updateSettings(this.settings);
+      },
+    });
+
+    // ── Auto-suggest setup ──
+    this.registerEditorExtension(ghostTextExtension());
+
+    this.autoSuggestService = new AutoSuggestService(
+      this.app,
+      this.api,
+      this.settings,
+    );
+
+    this.registerEvent(
+      this.app.workspace.on(
+        "editor-change",
+        (editor: Editor, info: MarkdownView) => {
+          const cm = (editor as unknown as { cm: EditorView | undefined }).cm;
+          if (cm && info) {
+            this.autoSuggestService?.onDocChange(cm);
+          }
+        },
+      ),
+    );
+
     console.debug("Logically plugin loaded");
   }
 
   onunload(): void {
+    // Cleanup auto-suggest
+    this.autoSuggestService?.destroy();
+    this.autoSuggestService = null;
+
     // Remove ribbon if it exists
     if (this.ribbon) {
       this.ribbon.remove();
@@ -90,6 +130,7 @@ export default class LogicallyPluginImpl
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
     this.api.updateSettings(this.settings);
+    this.autoSuggestService?.updateSettings(this.settings);
   }
 
   /**

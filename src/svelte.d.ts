@@ -4,4 +4,9 @@ declare module "*.svelte" {
   export default component;
 }
 
+declare module "*.svg" {
+  const content: string;
+  export default content;
+}
+
 declare const __LOGICALLY_DEV__: boolean;

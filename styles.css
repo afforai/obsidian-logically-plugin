@@ -1,5 +1,126 @@
 /* Logically Research Assistant Plugin Styles */
 
+/* ── Auto-suggest ghost text ── */
+.logically-ghost-wrapper {
+  pointer-events: auto;
+  display: inline;
+}
+
+.logically-ghost-wrapper-table {
+  display: block;
+  margin-top: 4px;
+}
+
+.logically-ghost-text {
+  color: var(--text-faint);
+  opacity: 0.5;
+  /* font-style: italic; */
+  pointer-events: none;
+  user-select: none;
+  white-space: pre-wrap;
+}
+
+.logically-ghost-text-block {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.logically-ghost-table-preview {
+  pointer-events: none;
+  margin-bottom: 6px;
+}
+
+.logically-ghost-table {
+  border-collapse: collapse;
+  max-width: 100%;
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.logically-ghost-table th,
+.logically-ghost-table td {
+  border: 1px solid var(--background-modifier-border);
+  padding: 2px 6px;
+  color: var(--text-muted);
+  text-align: left;
+}
+
+.logically-ghost-table th {
+  color: var(--text-normal);
+  background: var(--background-secondary-alt);
+}
+
+.logically-ghost-actions {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.logically-ghost-wrapper-table .logically-ghost-actions {
+  display: flex;
+  margin-left: 0;
+}
+
+.logically-ghost-regenerating {
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.8;
+  align-self: center;
+  margin-right: 2px;
+}
+
+.logically-ghost-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.logically-ghost-btn:hover {
+  background: var(--background-modifier-hover);
+}
+
+.logically-ghost-accept {
+  color: var(--color-green);
+}
+
+.logically-ghost-accept:hover {
+  border-color: var(--color-green);
+  background: var(--background-modifier-hover);
+}
+
+.logically-ghost-regenerate:hover {
+  border-color: var(--text-accent);
+  color: var(--text-accent);
+}
+
+.logically-ghost-regenerate.is-loading {
+  opacity: 0.8;
+  cursor: default;
+}
+
+.logically-ghost-regenerate.is-loading svg {
+  animation: logically-rotate 0.9s linear infinite;
+}
+
+@keyframes logically-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* Container styling */
 .logically-research-assistant-container {
   display: flex;
