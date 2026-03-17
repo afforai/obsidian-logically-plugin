@@ -87,7 +87,11 @@ export default class LogicallyPluginImpl
     // ── Auto-suggest setup ──
     this.registerEditorExtension(ghostTextExtension());
 
-    this.autoSuggestService = new AutoSuggestService(this.api, this.settings);
+    this.autoSuggestService = new AutoSuggestService(
+      this.app,
+      this.api,
+      this.settings,
+    );
 
     this.registerEvent(
       this.app.workspace.on(

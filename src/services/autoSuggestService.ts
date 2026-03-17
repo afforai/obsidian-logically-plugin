@@ -1,6 +1,8 @@
+import type { App } from "obsidian";
 import type { EditorView } from "@codemirror/view";
 import type { LogicallyApi } from "./logicallyApi";
-import type { LogicallySettings } from "../types";
+import type { AutoSuggestQuota, LogicallySettings } from "../types";
+import { AutoSuggestLimitModal } from "../ui/autoSuggestLimitModal";
 import {
   setGhostText,
   setGhostRegenerating,
@@ -17,6 +19,8 @@ import {
 const MAX_CONTEXT_CHARS = 320;
 /** Maximum number of cached suggestions per view. */
 const MAX_CACHE_SIZE = 50;
+/** Pricing page for upgrading when quota is reached. */
+const PRICING_URL = "https://logically.app/pricing";
 
 /** A cached suggestion tied to a document position and its context. */
 interface CachedSuggestion {
@@ -31,8 +35,11 @@ interface CachedSuggestion {
  * Each view is registered/unregistered via {@link attachView}/{@link detachView}.
  */
 export class AutoSuggestService {
+  private app: App;
   private api: LogicallyApi;
   private settings: LogicallySettings;
+  private isLimitModalOpen = false;
+  private lastLimitAlertAt = 0;
 
   // Debounce / request state (single active request at a time)
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -54,7 +61,8 @@ export class AutoSuggestService {
   // Invalidated entirely on any document change (positions shift).
   private suggestionCache = new Map<number, CachedSuggestion>();
 
-  constructor(api: LogicallyApi, settings: LogicallySettings) {
+  constructor(app: App, api: LogicallyApi, settings: LogicallySettings) {
+    this.app = app;
     this.api = api;
     this.settings = settings;
   }
@@ -164,6 +172,13 @@ export class AutoSuggestService {
         },
       });
 
+      if (!result.success) {
+        this.maybeShowLimitUpgradePrompt(undefined, result.error);
+        return;
+      }
+
+      this.maybeShowLimitUpgradePrompt(result.data?.meta?.quota);
+
       // Bail if aborted while waiting
       if (controller.signal.aborted) return;
 
@@ -243,8 +258,8 @@ export class AutoSuggestService {
     // Accept → clear entire cache (document changed, positions shift)
     this.suggestionCache.clear();
 
-    // Fire-and-forget: notify backend of acceptance
-    void this.api.acceptAutoSuggestion();
+    // Fire-and-forget: notify backend of acceptance and react to quota state
+    void this.notifyAcceptance();
 
     return true;
   }
@@ -270,6 +285,48 @@ export class AutoSuggestService {
 
     // Request a new suggestion with regenerate flag
     void this.requestSuggestion(view, true);
+  }
+
+  private async notifyAcceptance(): Promise<void> {
+    const result = await this.api.acceptAutoSuggestion();
+    if (!result.success) {
+      this.maybeShowLimitUpgradePrompt(undefined, result.error);
+      return;
+    }
+    this.maybeShowLimitUpgradePrompt(result.data);
+  }
+
+  private maybeShowLimitUpgradePrompt(
+    quota?: AutoSuggestQuota,
+    error?: string,
+  ): void {
+    const limitFromError = /daily suggestion acceptance limit reached/i.test(
+      error ?? "",
+    );
+    const limitFromQuota =
+      quota?.hit === true ||
+      quota?.can_accept === false ||
+      (typeof quota?.remaining === "number" &&
+        typeof quota?.limit === "number" &&
+        quota.limit !== Number.MAX_SAFE_INTEGER &&
+        quota.remaining <= 0);
+
+    if (!limitFromError && !limitFromQuota) return;
+    if (this.isLimitModalOpen) return;
+
+    const now = Date.now();
+    if (now - this.lastLimitAlertAt < 10000) return;
+    this.lastLimitAlertAt = now;
+    this.isLimitModalOpen = true;
+
+    const modal = new AutoSuggestLimitModal(
+      this.app,
+      () => window.open(PRICING_URL, "_blank"),
+      () => {
+        this.isLimitModalOpen = false;
+      },
+    );
+    modal.open();
   }
 
   /**
