@@ -1,7 +1,5 @@
 import { requestUrl } from "obsidian";
 import type { RequestUrlParam } from "obsidian";
-import * as https from "https";
-import { URL } from "url";
 import type {
   ApiResponse,
   AutoSuggestQuota,
@@ -17,25 +15,21 @@ import type {
   SourceNode,
 } from "../types";
 import {
+  type AutoSuggestStreamHandler,
+  streamAutoSuggestMarkdown,
+  streamCompletionViaRequestUrl,
+} from "./streamingClient";
+import {
   AI_MODELS,
   DEFAULT_SETTINGS,
   ModelCategory,
   SEARCH_MODE_TO_TOOL,
 } from "../types";
-import { IS_DEV_BUILD } from "../utils/env";
+import { IS_DEV_BUILD } from "utils/env";
 
 // Module-level caching for models
 let cachedModels: ModelEntity[] | null = null;
 let fetchPromise: Promise<ModelEntity[]> | null = null;
-
-type StreamHandler = {
-  onChunk: (chunk: string) => void;
-  onComplete: () => void;
-  onError: (error: string) => void;
-  onCitation?: (sources: SourceNode[]) => void;
-};
-
-const STREAM_TOKEN_REGEX = /❬([A-Z_]+)❭([\s\S]*?)❬\/\1❭/g;
 
 const DEFAULT_SESSION_FIELDS = () => {
   const now = new Date();
@@ -68,9 +62,6 @@ const DEFAULT_SESSION_FIELDS = () => {
     accessed: now,
   };
 };
-
-const unescapeStream = (value: string) =>
-  value.replace(/❪/g, "❬").replace(/❫/g, "❭");
 
 /**
  * Logically API client for interacting with the Logically backend.
@@ -383,9 +374,15 @@ export class LogicallyApi {
         contextNotes,
         fileAttachments,
       );
-      await this.streamCompletionViaRequestUrl(
+      const headers = this.buildAuthHeaders({
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(JSON.stringify(payload)).toString(),
+      });
+      await streamCompletionViaRequestUrl(
         this.getUrl(options?.endpoint ?? "/app/completion"),
         JSON.stringify(payload),
+        headers,
+        (json, status) => this.parseError(json, status),
         { onChunk, onComplete, onError, onCitation },
       );
     } catch (error) {
@@ -394,72 +391,6 @@ export class LogicallyApi {
         error instanceof Error ? error.message : "Failed to get response",
       );
     }
-  }
-
-  private async streamCompletionViaRequestUrl(
-    url: string,
-    body: string,
-    handlers: StreamHandler,
-  ): Promise<void> {
-    const parsedUrl = new URL(url);
-    const headers = this.buildAuthHeaders({
-      "Content-Type": "application/json",
-      "Content-Length": Buffer.byteLength(body).toString(),
-    });
-
-    return new Promise((resolve) => {
-      const req = https.request(
-        {
-          protocol: parsedUrl.protocol,
-          hostname: parsedUrl.hostname,
-          port: parsedUrl.port || undefined,
-          path: parsedUrl.pathname + parsedUrl.search,
-          method: "POST",
-          headers,
-        },
-        (res) => {
-          const statusCode = res.statusCode ?? 0;
-          if (statusCode < 200 || statusCode >= 300) {
-            let errorBody = "";
-            res.setEncoding("utf8");
-            res.on("data", (chunk) => {
-              errorBody += String(chunk);
-            });
-            res.on("end", () => {
-              try {
-                const parsed: unknown = errorBody
-                  ? JSON.parse(errorBody)
-                  : null;
-                handlers.onError(this.parseError(parsed, statusCode));
-              } catch {
-                handlers.onError(
-                  this.parseError(errorBody || null, statusCode),
-                );
-              }
-              resolve();
-            });
-            return;
-          }
-
-          this.consumeNodeStream(res, handlers)
-            .then(resolve)
-            .catch((err) => {
-              handlers.onError(
-                err instanceof Error ? err.message : String(err),
-              );
-              resolve();
-            });
-        },
-      );
-
-      req.on("error", (err) => {
-        handlers.onError(err instanceof Error ? err.message : String(err));
-        resolve();
-      });
-
-      req.write(body);
-      req.end();
-    });
   }
 
   /**
@@ -525,141 +456,6 @@ export class LogicallyApi {
     return fetchPromise;
   }
 
-  private async consumeNodeStream(
-    body: NodeJS.ReadableStream,
-    handlers: StreamHandler,
-  ): Promise<void> {
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let completed = false;
-
-    const handlePacket = (key: string, rawValue: string) => {
-      const payload = unescapeStream(rawValue);
-      switch (key) {
-        case "COMPLETION": {
-          try {
-            const parsed = JSON.parse(payload) as Record<string, unknown>;
-            const chunk = parsed.chunk;
-            if (typeof chunk === "string") handlers.onChunk(chunk);
-            else handlers.onChunk(JSON.stringify(parsed));
-          } catch {
-            handlers.onChunk(payload);
-          }
-          break;
-        }
-        case "CITATION": {
-          // Extract source nodes from the nodes array.
-          if (handlers.onCitation) {
-            try {
-              const parsed = JSON.parse(payload) as Record<string, unknown>;
-              const nodes = parsed.nodes;
-              if (nodes && Array.isArray(nodes)) {
-                const sources: SourceNode[] = (
-                  nodes as Record<string, unknown>[]
-                ).map((n) => ({
-                  fileid: n.fileid as string | undefined,
-                  filename: (n.filename as string) ?? "Unknown",
-                  filetype: (n.filetype as string) ?? "",
-                  url: n.url as string | undefined,
-                  pdfUrl: n.pdfUrl as string | undefined,
-                  pages: n.pages as number[] | undefined,
-                  content: n.content as string | undefined,
-                  citationCount: (
-                    n.others as Record<string, unknown> | undefined
-                  )?.citation_count as number | undefined,
-                  referenceCount: (
-                    n.others as Record<string, unknown> | undefined
-                  )?.reference_count as number | undefined,
-                }));
-                handlers.onCitation(sources);
-              }
-            } catch {
-              // Ignore parse errors for citation data
-            }
-          }
-          break;
-        }
-        case "ERROR": {
-          try {
-            const parsed = JSON.parse(payload) as Record<string, unknown>;
-            const code = parsed.code;
-            const message = parsed.message;
-            handlers.onError(
-              (typeof code === "string" ? code : null) ??
-                (typeof message === "string" ? message : null) ??
-                "Request failed",
-            );
-          } catch {
-            handlers.onError(payload || "Request failed");
-          }
-          completed = true;
-          break;
-        }
-        case "DONE": {
-          completed = true;
-          handlers.onComplete();
-          break;
-        }
-        default:
-          break;
-      }
-    };
-
-    const flushBuffer = () => {
-      STREAM_TOKEN_REGEX.lastIndex = 0;
-      let match: RegExpExecArray | null;
-      let lastIndex = 0;
-      while ((match = STREAM_TOKEN_REGEX.exec(buffer)) !== null) {
-        lastIndex = STREAM_TOKEN_REGEX.lastIndex;
-        const key = match[1];
-        const value = match[2];
-        if (key && value !== undefined) {
-          handlePacket(key, value);
-        }
-      }
-      buffer = buffer.slice(lastIndex);
-    };
-
-    return await new Promise((resolve) => {
-      const onData = (chunk: unknown) => {
-        if (completed) return;
-        if (typeof chunk === "string") {
-          buffer += chunk;
-        } else {
-          buffer += decoder.decode(chunk as Uint8Array, { stream: true });
-        }
-        flushBuffer();
-        if (completed) {
-          body.removeListener("data", onData);
-          body.removeListener("end", onEnd);
-          body.removeListener("error", onError);
-          resolve();
-        }
-      };
-
-      const onEnd = () => {
-        flushBuffer();
-        if (!completed) handlers.onComplete();
-        body.removeListener("data", onData);
-        body.removeListener("end", onEnd);
-        body.removeListener("error", onError);
-        resolve();
-      };
-
-      const onError = (err: unknown) => {
-        handlers.onError(err instanceof Error ? err.message : String(err));
-        body.removeListener("data", onData);
-        body.removeListener("end", onEnd);
-        body.removeListener("error", onError);
-        resolve();
-      };
-
-      body.on("data", onData);
-      body.on("end", onEnd);
-      body.on("error", onError);
-    });
-  }
-
   /**
    * Request an auto-suggestion from the backend.
    */
@@ -681,6 +477,47 @@ export class LogicallyApi {
         options: params.options,
       }),
     });
+  }
+
+  /**
+   * Request an auto-suggestion as streaming markdown text.
+   */
+  async streamAutoSuggestion(
+    params: {
+      text: string;
+      model?: string;
+      options?: {
+        regenerate?: boolean;
+        temperature?: number;
+        is_internal_source?: boolean;
+        is_external_source?: boolean;
+      };
+    },
+    handlers?: AutoSuggestStreamHandler,
+  ): Promise<ApiResponse<{ suggestion: string }>> {
+    if (!this.settings.userToken) {
+      return { success: false, error: "Not authenticated" };
+    }
+
+    const url = this.getUrl("/obsidian/autosuggest/suggest/stream");
+    const body = JSON.stringify({
+      text: params.text,
+      model: params.model,
+      options: params.options,
+    });
+    const headers = this.buildAuthHeaders({
+      "Content-Type": "application/json",
+      Accept: "text/markdown",
+      "Content-Length": Buffer.byteLength(body).toString(),
+    });
+
+    return streamAutoSuggestMarkdown(
+      url,
+      body,
+      headers,
+      (json, status) => this.parseError(json, status),
+      handlers,
+    );
   }
 
   /**

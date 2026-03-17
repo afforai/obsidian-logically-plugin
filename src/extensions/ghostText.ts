@@ -48,6 +48,74 @@ function createSvgIcon(svg: string): SVGElement {
   return fallback;
 }
 
+const TABLE_SEPARATOR_RE = /^\|\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/;
+
+type ParsedGhostTable = {
+  leadingText: string;
+  header: string[];
+  rows: string[][];
+  trailingText: string;
+};
+
+function parseTableRow(line: string): string[] {
+  const trimmed = line.trim();
+  if (!trimmed.includes("|")) return [];
+  const core = trimmed.replace(/^\|/, "").replace(/\|$/, "");
+  return core.split("|").map((cell) => cell.trim());
+}
+
+function parseGhostTable(text: string): ParsedGhostTable | null {
+  const normalized = (text || "").replace(/\r\n/g, "\n");
+  const lines = normalized.split("\n");
+
+  for (let i = 1; i < lines.length; i++) {
+    const separator = (lines[i] ?? "").trim();
+    const headerRaw = lines[i - 1] ?? "";
+    if (!TABLE_SEPARATOR_RE.test(separator)) {
+      continue;
+    }
+
+    const firstPipe = headerRaw.indexOf("|");
+    if (firstPipe < 0) {
+      continue;
+    }
+
+    const leadingInline = headerRaw.slice(0, firstPipe).trimEnd();
+    const headerLine = headerRaw.slice(firstPipe).trimStart();
+    if (!headerLine.startsWith("|")) {
+      continue;
+    }
+
+    const header = parseTableRow(headerLine);
+    if (!header.length) continue;
+
+    const rows: string[][] = [];
+    let end = i + 1;
+    while (end < lines.length) {
+      const current = (lines[end] ?? "").trim();
+      if (!current.startsWith("|")) break;
+      const row = parseTableRow(current);
+      if (!row.length) break;
+      rows.push(row);
+      end += 1;
+    }
+
+    const leadingLines = lines.slice(0, i - 1);
+    if (leadingInline) {
+      leadingLines.push(leadingInline);
+    }
+
+    return {
+      leadingText: leadingLines.join("\n").trim(),
+      header,
+      rows,
+      trailingText: lines.slice(end).join("\n").trim(),
+    };
+  }
+
+  return null;
+}
+
 // ── Widget ───────────────────────────────────────────────────────────
 class GhostTextWidget extends WidgetType {
   constructor(
@@ -62,13 +130,64 @@ class GhostTextWidget extends WidgetType {
   }
 
   toDOM(): HTMLElement {
-    const wrapper = document.createElement("span");
-    wrapper.className = "logically-ghost-wrapper";
+    const table = parseGhostTable(this.text);
+    const wrapper = document.createElement(table ? "div" : "span");
+    wrapper.className = table
+      ? "logically-ghost-wrapper logically-ghost-wrapper-table"
+      : "logically-ghost-wrapper";
 
-    const textSpan = document.createElement("span");
-    textSpan.className = "logically-ghost-text";
-    textSpan.textContent = this.text;
-    wrapper.appendChild(textSpan);
+    if (table) {
+      if (table.leadingText) {
+        const leadingText = document.createElement("div");
+        leadingText.className =
+          "logically-ghost-text logically-ghost-text-block";
+        leadingText.textContent = table.leadingText;
+        wrapper.appendChild(leadingText);
+      }
+
+      const tablePreview = document.createElement("div");
+      tablePreview.className = "logically-ghost-table-preview";
+
+      const tableElement = document.createElement("table");
+      tableElement.className = "logically-ghost-table";
+
+      const thead = document.createElement("thead");
+      const headerRow = document.createElement("tr");
+      for (const cell of table.header) {
+        const th = document.createElement("th");
+        th.textContent = cell;
+        headerRow.appendChild(th);
+      }
+      thead.appendChild(headerRow);
+      tableElement.appendChild(thead);
+
+      const tbody = document.createElement("tbody");
+      for (const row of table.rows) {
+        const tr = document.createElement("tr");
+        for (let i = 0; i < table.header.length; i++) {
+          const td = document.createElement("td");
+          td.textContent = row[i] ?? "";
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+      }
+      tableElement.appendChild(tbody);
+      tablePreview.appendChild(tableElement);
+      wrapper.appendChild(tablePreview);
+
+      if (table.trailingText) {
+        const trailingText = document.createElement("div");
+        trailingText.className =
+          "logically-ghost-text logically-ghost-text-block";
+        trailingText.textContent = table.trailingText;
+        wrapper.appendChild(trailingText);
+      }
+    } else {
+      const textSpan = document.createElement("span");
+      textSpan.className = "logically-ghost-text";
+      textSpan.textContent = this.text;
+      wrapper.appendChild(textSpan);
+    }
 
     const actions = document.createElement("span");
     actions.className = "logically-ghost-actions";
