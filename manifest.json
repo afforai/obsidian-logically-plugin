@@ -1,7 +1,7 @@
 {
   "id": "logically",
   "name": "Logically AI Research Assistant",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "minAppVersion": "1.7.2",
   "description": "Use Logically's AI Research Assistant to conduct citation-backed research on the files in your vault.",
   "author": "Logically",
