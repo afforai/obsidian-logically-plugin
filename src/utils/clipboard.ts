@@ -7,8 +7,11 @@
  */
 export async function copyToClipboard(text: string): Promise<boolean> {
   try {
-    // Electron clipboard available in desktop-only Obsidian plugins
-    // eslint-disable-next-line @typescript-eslint/no-require-imports -- Electron clipboard is only available via require() at runtime in Obsidian's desktop shell
+    // Electron's clipboard module is a CommonJS module bundled with Obsidian's
+    // desktop shell. It is not available as an ES module import and must be
+    // loaded via require() at runtime. This plugin is marked isDesktopOnly,
+    // so the require("electron") call is always safe in supported environments.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- Electron is a CommonJS-only module in Obsidian's desktop shell; require() is the only supported access path
     const { clipboard } = require("electron") as {
       clipboard: { writeText(text: string): void };
     };

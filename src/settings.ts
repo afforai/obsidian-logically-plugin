@@ -96,7 +96,7 @@ export class LogicallySettingTab extends PluginSettingTab {
     this.displayTokenLogin(containerEl);
 
     // Footer with link to documentation
-    const footerEl = containerEl.createEl("div", {
+    const footerEl = containerEl.createDiv({
       cls: "logically-settings-footer",
     });
     const footerLink = footerEl.createEl("a", {
@@ -110,7 +110,7 @@ export class LogicallySettingTab extends PluginSettingTab {
   private isValidatingToken = false;
 
   private displayTokenLogin(containerEl: HTMLElement): void {
-    const tokenContainer = containerEl.createEl("div", {
+    const tokenContainer = containerEl.createDiv({
       cls: "logically-token-login",
     });
 
@@ -231,7 +231,7 @@ export class LogicallySettingTab extends PluginSettingTab {
   }
 
   private displayLoginForm(containerEl: HTMLElement): void {
-    const loginContainer = containerEl.createEl("div", {
+    const loginContainer = containerEl.createDiv({
       cls: "logically-login-form",
     });
 
