@@ -60,5 +60,11 @@
   "nano-staged": {
     "*.{ts,svelte,json,md}": "prettier --write",
     "*.ts": "eslint --max-warnings 0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "svelte-preprocess"
+    ]
   }
 }
