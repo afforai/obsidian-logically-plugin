@@ -44,7 +44,7 @@ If you don’t see Logically listed in the Community Plugins browser, you can in
 2. Sign in with your Logically email and password (or paste a token under **Advanced → Login with token**)
 3. (Optional) Use **Verify connection** to test your login/API
 
-<img width="2838" height="1776" alt="image" src="https://github.com/user-attachments/assets/b9c122a4-e4c5-421e-879c-e6b6d8f674ba" />
+<img alt="image" src="https://github.com/user-attachments/assets/b9c122a4-e4c5-421e-879c-e6b6d8f674ba" />
 
 ## Using The Plugin
 
@@ -53,13 +53,13 @@ If you don’t see Logically listed in the Community Plugins browser, you can in
 3. Select an AI model.
 4. Ask your question.
 
-<img width="2841" height="1776" alt="image" src="https://github.com/user-attachments/assets/c6a73d1b-4ec1-4121-a467-48df85e20b2f" />
+<img alt="image" src="https://github.com/user-attachments/assets/c6a73d1b-4ec1-4121-a467-48df85e20b2f" />
 
 ### Using Document Retrieval Mode
 
 - When in Document Retrieval mode, click **"Files"** to open the file picker. From here, you can (search your vault and select notes) or drag a note from Obsidian’s file explorer into the assistant panel.
 
-<img width="2841" height="1776" alt="image" src="https://github.com/user-attachments/assets/6752ee43-dd73-4287-a59a-1e8749829819" />
+<img alt="image" src="https://github.com/user-attachments/assets/6752ee43-dd73-4287-a59a-1e8749829819" />
 
 **Notes:**
 
@@ -73,7 +73,7 @@ If you don’t see Logically listed in the Community Plugins browser, you can in
   - Open external links (Google / Scholar).
   - Open vault notes used as reference files.
 
-<img width="2841" height="1776" alt="image" src="https://github.com/user-attachments/assets/e11d8f1a-ad9a-4cb5-9d8f-40b75eb43672" />
+<img alt="image" src="https://github.com/user-attachments/assets/e11d8f1a-ad9a-4cb5-9d8f-40b75eb43672" />
 
 ### Inserting an Answer into Your Note
 
@@ -83,7 +83,7 @@ Press the ”**Insert into active note”** icon button to add a chat output to
 - Footnote definitions will appear at the bottom of your note.
 - A dedicated **Sources** section will be added with links to reference files and/or external URLs.
 
-<img width="2802" height="1776" alt="image" src="https://github.com/user-attachments/assets/b75ca7de-c7ab-4f31-9b54-8328549aa0c4" />
+<img alt="image" src="https://github.com/user-attachments/assets/b75ca7de-c7ab-4f31-9b54-8328549aa0c4" />
 
 ### Settings panel (in the AI Research Assistant Header)
 
@@ -91,7 +91,7 @@ Press the ”**Insert into active note”** icon button to add a chat output to
 - Lets you **logout**
 - Lets you edit and save a **Custom Instruction** (applied to every message)
 
-<img width="2823" height="1776" alt="image" src="https://github.com/user-attachments/assets/8f1c0429-e78f-4ba4-919e-63f13ffac637" />
+<img alt="image" src="https://github.com/user-attachments/assets/8f1c0429-e78f-4ba4-919e-63f13ffac637" />
 
 ## Privacy & data
 
