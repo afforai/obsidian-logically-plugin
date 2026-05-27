@@ -2,47 +2,64 @@
   import { createEventDispatcher } from "svelte";
 
   export let isOpen = false;
-  export let modelType: "advanced" | "reasoning" = "advanced";
+  export let modelType: "advanced" | "reasoning" | "quota" = "advanced";
 
   const dispatch = createEventDispatcher<{ close: void }>();
 
   $: title =
-    modelType === "advanced"
-      ? "Unlock Advanced AI Models"
-      : "Unlock Reasoning AI Models";
+    modelType === "quota"
+      ? "You've Used Your Credits"
+      : modelType === "advanced"
+        ? "Unlock Advanced AI Models"
+        : "Unlock Reasoning AI Models";
 
   $: upgradeUrl = "https://logically.app/pricing";
 
   $: features =
-    modelType === "advanced"
+    modelType === "quota"
       ? [
           {
-            icon: "🚀",
-            title: "GPT-5.1, Claude Sonnet 4.6, Gemini 2.5 Pro",
+            icon: "⚡",
+            title: "Get more monthly AI query credits",
           },
           {
-            icon: "📚",
-            title: "Larger context windows for complex documents",
+            icon: "📄",
+            title: "Upload and analyze more documents",
           },
           {
-            icon: "🎯",
-            title: "More accurate and nuanced responses",
+            icon: "🔍",
+            title: "Unlimited web & academic search",
           },
         ]
-      : [
-          {
-            icon: "🧠",
-            title: "GPT-5.4, Claude Opus 4.6, Gemini 3.1 Pro Preview",
-          },
-          {
-            icon: "📊",
-            title: "Complex multi-step reasoning",
-          },
-          {
-            icon: "✨",
-            title: "Comprehensive, detailed analysis",
-          },
-        ];
+      : modelType === "advanced"
+        ? [
+            {
+              icon: "🚀",
+              title: "GPT-5.1, Claude Sonnet 4.6, Gemini 2.5 Pro",
+            },
+            {
+              icon: "📚",
+              title: "Larger context windows for complex documents",
+            },
+            {
+              icon: "🎯",
+              title: "More accurate and nuanced responses",
+            },
+          ]
+        : [
+            {
+              icon: "🧠",
+              title: "GPT-5.4, Claude Opus 4.6, Gemini 3.1 Pro Preview",
+            },
+            {
+              icon: "📊",
+              title: "Complex multi-step reasoning",
+            },
+            {
+              icon: "✨",
+              title: "Comprehensive, detailed analysis",
+            },
+          ];
 
   function handleClose() {
     isOpen = false;
@@ -181,7 +198,9 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.15s ease;
+    transition:
+      background var(--ra-transition),
+      color var(--ra-transition);
   }
 
   .ra-upgrade-close:hover {
@@ -255,7 +274,7 @@
     justify-content: center;
     gap: 8px;
     padding: 12px 20px;
-    background: linear-gradient(135deg, #1980e6 0%, #0066cc 100%);
+    background: linear-gradient(135deg, var(--ra-brand-blue) 0%, #0066cc 100%);
     color: white;
     border: none;
     border-radius: 10px;
@@ -283,7 +302,9 @@
     border-radius: 10px;
     font-size: 13px;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition:
+      background var(--ra-transition),
+      color var(--ra-transition);
   }
 
   .ra-upgrade-btn-secondary:hover {

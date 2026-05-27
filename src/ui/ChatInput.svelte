@@ -7,13 +7,14 @@
     ModelCategory,
     PRIVILEGES,
   } from "../types";
+  import ToolSelector from "./ToolSelector.svelte";
 
   export let disabled = false;
   export let selectedModel: BaseModel = "gemini_flash";
-  export let selectedMode: SearchMode = "files";
+  export let selectedTools: SearchMode[] = ["files"];
   export let userPrivileges: Privilege[] = [];
-  export let filesExpanded = false;
   export let fileCount = 0;
+  export let totalFileCount = 0;
   /** Available AI models - defaults to static list, can be overridden with API data */
   export let models: ModelEntity[] = AI_MODELS;
   export let isAuthenticated = true;
@@ -21,9 +22,9 @@
   const dispatch = createEventDispatcher<{
     send: string;
     modelChange: BaseModel;
-    modeChange: SearchMode;
+    toolsChange: SearchMode[];
     showUpgrade: "advanced" | "reasoning";
-    toggleFiles: void;
+    openConnectNotes: void;
     requestLogin: void;
   }>();
 
@@ -34,11 +35,6 @@
   let modelDropdownOpen = false;
   let modelTriggerEl: HTMLButtonElement;
   let modelDropdownEl: HTMLDivElement;
-
-  // Mode selector state
-  let modeDropdownOpen = false;
-  let modeTriggerEl: HTMLButtonElement;
-  let modeDropdownEl: HTMLDivElement;
 
   $: hasAdvancedAccess = userPrivileges.includes(PRIVILEGES.advanced_models);
   $: hasReasoningAccess = userPrivileges.includes(PRIVILEGES.reasoning_models);
@@ -53,37 +49,6 @@
     (m) => m.category === ModelCategory.reasoning,
   );
   $: selectedModelInfo = models.find((m) => m.id === selectedModel);
-
-  interface ModeOption {
-    id: SearchMode;
-    name: string;
-    shortName: string;
-    icon: string;
-  }
-
-  const modes: ModeOption[] = [
-    {
-      id: "files",
-      name: "Document Retrieval",
-      shortName: "Files",
-      icon: "📄",
-    },
-    {
-      id: "google",
-      name: "Google Search",
-      shortName: "Google",
-      icon: "🔍",
-    },
-    {
-      id: "semantic",
-      name: "Semantic Scholar",
-      shortName: "Scholar",
-      icon: "📚",
-    },
-  ];
-
-  $: selectedModeInfo = modes.find((m) => m.id === selectedMode) ?? modes[0];
-  $: showFilesButton = selectedMode === "files";
 
   function handleSubmit() {
     if (!inputValue.trim() || disabled) return;
@@ -133,13 +98,8 @@
     modelDropdownOpen = false;
   }
 
-  function handleSelectMode(mode: SearchMode) {
-    dispatch("modeChange", mode);
-    modeDropdownOpen = false;
-  }
-
-  function handleToggleFiles() {
-    dispatch("toggleFiles");
+  function handleToolsChange(next: SearchMode[]) {
+    dispatch("toolsChange", next);
   }
 
   function handleDocumentClick(e: MouseEvent) {
@@ -151,15 +111,6 @@
         !modelDropdownEl?.contains(target)
       ) {
         modelDropdownOpen = false;
-      }
-    }
-
-    if (modeDropdownOpen) {
-      if (
-        !modeTriggerEl?.contains(target) &&
-        !modeDropdownEl?.contains(target)
-      ) {
-        modeDropdownOpen = false;
       }
     }
   }
@@ -188,85 +139,15 @@
 
   <div class="ra-input-footer">
     <div class="ra-input-controls">
-      <!-- Mode Selector -->
-      <div class="ra-selector-wrapper">
-        <button
-          bind:this={modeTriggerEl}
-          class="ra-selector-btn"
-          on:click|stopPropagation={() => {
-            modeDropdownOpen = !modeDropdownOpen;
-            modelDropdownOpen = false;
-          }}
-          type="button"
-          {disabled}
-        >
-          <span class="ra-selector-icon">{selectedModeInfo.icon}</span>
-          <span class="ra-selector-text">{selectedModeInfo.shortName}</span>
-          <svg
-            class="ra-selector-chevron"
-            class:open={modeDropdownOpen}
-            width="10"
-            height="10"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <polyline points="6 9 12 15 18 9"></polyline>
-          </svg>
-        </button>
-
-        {#if modeDropdownOpen}
-          <div
-            bind:this={modeDropdownEl}
-            class="ra-selector-dropdown ra-mode-dropdown"
-          >
-            {#each modes as mode (mode.id)}
-              <button
-                class="ra-dropdown-item"
-                class:selected={mode.id === selectedMode}
-                on:click={() => handleSelectMode(mode.id)}
-                type="button"
-              >
-                <span class="ra-item-check">
-                  {#if mode.id === selectedMode}✓{/if}
-                </span>
-                <span class="ra-item-icon">{mode.icon}</span>
-                <span class="ra-item-name">{mode.name}</span>
-              </button>
-            {/each}
-          </div>
-        {/if}
-      </div>
-
-      <!-- Files Button (only visible when mode is "files") -->
-      {#if showFilesButton}
-        <button
-          type="button"
-          class="ra-files-btn"
-          class:active={filesExpanded}
-          on:click={handleToggleFiles}
-          {disabled}
-          title="Toggle reference files"
-        >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
-            ></path>
-            <polyline points="14 2 14 8 20 8"></polyline>
-          </svg>
-          <span>Files</span>
-          {#if fileCount > 0}
-            <span class="ra-files-badge">{fileCount}</span>
-          {/if}
-        </button>
-      {/if}
+      <ToolSelector
+        {selectedTools}
+        {isAuthenticated}
+        {disabled}
+        connectedFileCount={fileCount}
+        {totalFileCount}
+        on:change={(e) => handleToolsChange(e.detail)}
+        on:openConnectNotes={() => dispatch("openConnectNotes")}
+      />
     </div>
 
     <div class="ra-input-actions">
@@ -277,7 +158,6 @@
           class="ra-selector-btn"
           on:click|stopPropagation={() => {
             modelDropdownOpen = !modelDropdownOpen;
-            modeDropdownOpen = false;
           }}
           type="button"
           {disabled}
@@ -449,9 +329,9 @@
   .ra-input-container {
     background: var(--background-secondary);
     border: 1px solid var(--background-modifier-border);
-    border-radius: 12px;
+    border-radius: var(--ra-radius-lg);
     padding: 10px 12px;
-    transition: border-color 0.15s ease;
+    transition: border-color var(--ra-transition);
   }
 
   .ra-input-container:focus-within {
@@ -523,12 +403,14 @@
     padding: 6px 10px;
     background: var(--background-secondary);
     border: 1px solid var(--background-modifier-border);
-    border-radius: 8px;
+    border-radius: var(--ra-radius-md);
     cursor: pointer;
     font-family: inherit;
     font-size: 12px;
     color: var(--text-normal);
-    transition: all 0.15s ease;
+    transition:
+      background var(--ra-transition),
+      border-color var(--ra-transition);
   }
 
   .ra-selector-btn:hover:not(:disabled) {
@@ -540,64 +422,17 @@
     cursor: not-allowed;
   }
 
-  .ra-selector-icon {
-    font-size: 13px;
-  }
-
   .ra-selector-text {
     font-weight: 500;
   }
 
   .ra-selector-chevron {
     color: var(--text-muted);
-    transition: transform 0.15s ease;
+    transition: transform var(--ra-transition);
   }
 
   .ra-selector-chevron.open {
     transform: rotate(180deg);
-  }
-
-  /* Files Button */
-  .ra-files-btn {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    padding: 6px 10px;
-    background: var(--background-secondary);
-    border: 1px solid var(--background-modifier-border);
-    border-radius: 8px;
-    cursor: pointer;
-    font-family: inherit;
-    font-size: 12px;
-    color: var(--text-muted);
-    transition: all 0.15s ease;
-  }
-
-  .ra-files-btn:hover:not(:disabled) {
-    background: var(--background-modifier-hover);
-    color: var(--text-normal);
-  }
-
-  .ra-files-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .ra-files-btn.active {
-    background: var(--background-modifier-hover);
-    color: var(--text-normal);
-    border-color: var(--interactive-accent);
-  }
-
-  .ra-files-badge {
-    background: rgba(25, 128, 230, 0.2);
-    color: #1980e6;
-    font-size: 10px;
-    font-weight: 600;
-    padding: 1px 5px;
-    border-radius: 8px;
-    min-width: 14px;
-    text-align: center;
   }
 
   .ra-selector-dropdown {
@@ -607,15 +442,10 @@
     margin-bottom: 4px;
     background: var(--background-primary);
     border: 1px solid var(--background-modifier-border);
-    border-radius: 10px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    border-radius: var(--ra-radius-lg);
+    box-shadow: var(--ra-shadow-pop);
     z-index: 1000;
     overflow: hidden;
-  }
-
-  .ra-mode-dropdown {
-    min-width: 200px;
-    padding: 4px;
   }
 
   .ra-model-dropdown {
@@ -640,7 +470,8 @@
     text-align: left;
     color: var(--text-normal);
     font-size: 13px;
-    border-radius: 6px;
+    border-radius: var(--ra-radius-sm);
+    transition: background var(--ra-transition);
   }
 
   .ra-dropdown-item:hover {
@@ -648,7 +479,7 @@
   }
 
   .ra-dropdown-item.selected {
-    background: rgba(25, 128, 230, 0.1);
+    background: var(--ra-brand-blue-bg);
   }
 
   .ra-dropdown-item.locked {
@@ -662,12 +493,7 @@
   .ra-item-check {
     width: 16px;
     font-size: 11px;
-    color: #1980e6;
-    flex-shrink: 0;
-  }
-
-  .ra-item-icon {
-    font-size: 14px;
+    color: var(--ra-brand-blue);
     flex-shrink: 0;
   }
 
@@ -710,10 +536,10 @@
   .ra-model-tag {
     font-size: 10px;
     font-weight: 600;
-    color: #1980e6;
-    background: rgba(25, 128, 230, 0.15);
+    color: var(--ra-brand-blue);
+    background: var(--ra-brand-blue-bg);
     padding: 2px 5px;
-    border-radius: 4px;
+    border-radius: var(--ra-radius-sm);
   }
 
   .ra-send-btn {
@@ -725,11 +551,13 @@
     padding: 0;
     background: var(--interactive-accent);
     border: none;
-    border-radius: 10px;
+    border-radius: var(--ra-radius-md);
     cursor: pointer;
     color: var(--text-on-accent);
     flex-shrink: 0;
-    transition: all 0.15s ease;
+    transition:
+      filter var(--ra-transition),
+      transform var(--ra-transition);
   }
 
   .ra-send-btn:hover:not(:disabled) {

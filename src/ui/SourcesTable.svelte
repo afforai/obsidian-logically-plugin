@@ -1,15 +1,24 @@
 <script lang="ts">
   import type { App } from "obsidian";
-  import type { SourceNode } from "../types";
+  import type { SourceNode, Tool } from "../types";
 
   export let sources: SourceNode[] = [];
   export let isExpanded = true;
   export let app: App | undefined = undefined;
 
-  /**
-   * Group sources by their unique identifier (fileid or url or filename).
-   * This deduplicates sources that appear multiple times.
-   */
+  type TabKey = "all" | Tool;
+
+  /** Per-tool grouping for the tabbed final-aggregate view (B36).
+   *  Falls back to inferring from `filetype` for sources lacking `toolType`
+   *  (legacy v1 frames / historical chat replay). */
+  function classify(n: SourceNode): Tool {
+    if (n.toolType) return n.toolType;
+    if (n.filetype === "goog") return "search_web";
+    if (n.filetype === "semantic_scholar") return "search_academic";
+    return "search_library";
+  }
+
+  /** Deduplicate by stable identifier (fileid|url|filename). */
   function getUniqueSources(nodes: SourceNode[]): SourceNode[] {
     const seen = new Set<string>();
     const unique: SourceNode[] = [];
@@ -23,41 +32,6 @@
     return unique;
   }
 
-  /**
-   * Determine the source type for display.
-   */
-  function getSourceType(
-    sources: SourceNode[],
-  ): "google" | "semantic_scholar" | "documents" | "reference" {
-    const first = sources[0];
-    if (!first) return "documents";
-    if (first.filetype === "goog") return "google";
-    if (first.filetype === "semantic_scholar") return "semantic_scholar";
-    if (first.filetype === "reference") return "reference";
-    return "documents";
-  }
-
-  /**
-   * Get appropriate label for source type.
-   */
-  function getSourceLabel(
-    type: "google" | "semantic_scholar" | "documents" | "reference",
-  ): string {
-    switch (type) {
-      case "google":
-        return "Google Search Results";
-      case "semantic_scholar":
-        return "Semantic Scholar Results";
-      case "reference":
-        return "Reference Files";
-      default:
-        return "Document Sources";
-    }
-  }
-
-  /**
-   * Get hostname from URL for display.
-   */
   function getHostname(url: string | undefined): string {
     if (!url) return "";
     try {
@@ -67,23 +41,16 @@
     }
   }
 
-  /** Validate URL has safe protocol (http/https only) */
   function isSafeUrl(url: string): boolean {
     return /^https?:\/\//i.test(url);
   }
 
-  /**
-   * Open URL in external browser (only http/https URLs).
-   */
   function openUrl(url: string | undefined) {
     if (url && isSafeUrl(url)) {
       window.open(url, "_blank");
     }
   }
 
-  /**
-   * Open a file in Obsidian by path.
-   */
   function openFile(filePath: string | undefined) {
     if (!filePath || !app) return;
     const file = app.vault.getAbstractFileByPath(filePath);
@@ -92,9 +59,33 @@
     }
   }
 
+  const TAB_LABEL: Record<Tool, string> = {
+    search_library: "Library",
+    search_academic: "Academic",
+    search_web: "Web",
+  };
+
+  let activeTab: TabKey = "all";
+
   $: uniqueSources = getUniqueSources(sources);
-  $: sourceType = getSourceType(sources);
-  $: sourceLabel = getSourceLabel(sourceType);
+  $: groups = (() => {
+    const g: Record<Tool, SourceNode[]> = {
+      search_library: [],
+      search_academic: [],
+      search_web: [],
+    };
+    for (const s of uniqueSources) g[classify(s)].push(s);
+    return g;
+  })();
+  $: availableTools = (Object.keys(groups) as Tool[]).filter(
+    (t) => groups[t].length > 0,
+  );
+  // If active tab becomes empty after data change, fall back to "all".
+  $: if (activeTab !== "all" && !availableTools.includes(activeTab as Tool)) {
+    activeTab = "all";
+  }
+  $: visibleSources =
+    activeTab === "all" ? uniqueSources : groups[activeTab as Tool];
 </script>
 
 {#if uniqueSources.length > 0}
@@ -103,68 +94,13 @@
     <!-- svelte-ignore a11y-click-events-have-key-events -->
     <div class="ra-sources-header" on:click={() => (isExpanded = !isExpanded)}>
       <div class="ra-sources-title">
-        {#if sourceType === "google"}
-          <svg
-            class="ra-sources-icon"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-          >
-            <path
-              fill="currentColor"
-              d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-            />
-            <path
-              fill="currentColor"
-              d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-            />
-            <path
-              fill="currentColor"
-              d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-            />
-            <path
-              fill="currentColor"
-              d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-            />
-          </svg>
-        {:else if sourceType === "semantic_scholar"}
-          <svg
-            class="ra-sources-icon"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-          >
-            <path
-              fill="currentColor"
-              d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"
-            />
-          </svg>
-        {:else if sourceType === "reference"}
-          <svg
-            class="ra-sources-icon"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-          >
-            <path
-              fill="currentColor"
-              d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"
-            />
-          </svg>
-        {:else}
-          <svg
-            class="ra-sources-icon"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-          >
-            <path
-              fill="currentColor"
-              d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"
-            />
-          </svg>
-        {/if}
-        <span>{sourceLabel}</span>
+        <svg class="ra-sources-icon" width="16" height="16" viewBox="0 0 24 24">
+          <path
+            fill="currentColor"
+            d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z"
+          />
+        </svg>
+        <span>Sources</span>
         <span class="ra-sources-count">({uniqueSources.length})</span>
       </div>
       <svg
@@ -179,131 +115,106 @@
     </div>
 
     {#if isExpanded}
-      <div class="ra-sources-table-wrapper">
-        <table class="ra-sources-table">
-          <thead>
-            <tr>
-              {#if sourceType === "google"}
-                <th>Website</th>
-                <th>Title</th>
-              {:else if sourceType === "semantic_scholar"}
-                <th>Source</th>
-                <th>Title</th>
-                <th>Citations</th>
-              {:else if sourceType === "reference"}
-                <th>File</th>
-              {:else}
-                <th>Document</th>
-                <th>Pages</th>
-              {/if}
-              <th class="ra-sources-action-col">Link</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each uniqueSources as source, i}
-              <tr>
-                {#if sourceType === "google"}
-                  <td class="ra-sources-website">
-                    <img
-                      src="https://www.google.com/s2/favicons?domain={getHostname(
-                        source.url,
-                      )}&sz=16"
-                      alt=""
-                      width="16"
-                      height="16"
-                      class="ra-sources-favicon"
-                    />{getHostname(source.url)}
-                  </td>
-                  <td class="ra-sources-title-cell">
-                    {source.filename}
-                  </td>
-                {:else if sourceType === "semantic_scholar"}
-                  <td class="ra-sources-website">
-                    {#if source.pdfUrl}
-                      <img
-                        src="https://www.google.com/s2/favicons?domain={getHostname(
-                          source.pdfUrl,
-                        )}&sz=16"
-                        alt=""
-                        width="16"
-                        height="16"
-                        class="ra-sources-favicon"
-                      />{getHostname(source.pdfUrl)}
-                    {:else}
-                      <svg
-                        class="ra-sources-favicon"
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          fill="currentColor"
-                          d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"
-                        />
-                      </svg>Semantic Scholar
-                    {/if}
-                  </td>
-                  <td class="ra-sources-title-cell">
-                    {source.filename}
-                  </td>
-                  <td class="ra-sources-stat">
-                    {source.citationCount ?? "-"}
-                  </td>
-                {:else if sourceType === "reference"}
-                  <td class="ra-sources-title-cell ra-sources-file-cell">
-                    <svg
-                      class="ra-sources-favicon"
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        fill="currentColor"
-                        d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"
-                      />
-                    </svg>
-                    <!-- svelte-ignore a11y-click-events-have-key-events -->
-                    <!-- svelte-ignore a11y-no-static-element-interactions -->
-                    <span
-                      class="ra-sources-file-link"
-                      on:click={() => openFile(source.fileid)}
-                      title="Open {source.fileid}"
-                      >{source.fileid || source.filename}</span
-                    >
-                  </td>
+      {#if availableTools.length > 1}
+        <div class="ra-sources-tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            class="ra-sources-tab"
+            class:active={activeTab === "all"}
+            on:click={() => (activeTab = "all")}
+          >
+            All
+            <span class="ra-sources-tab-count">{uniqueSources.length}</span>
+          </button>
+          {#each availableTools as tool}
+            <button
+              type="button"
+              role="tab"
+              class="ra-sources-tab"
+              class:active={activeTab === tool}
+              on:click={() => (activeTab = tool)}
+            >
+              {TAB_LABEL[tool]}
+              <span class="ra-sources-tab-count">{groups[tool].length}</span>
+            </button>
+          {/each}
+        </div>
+      {/if}
+
+      <div class="ra-sources-list">
+        {#each visibleSources as source (source.fileid || source.url || source.filename)}
+          {@const kind = classify(source)}
+          <div class="ra-sources-row">
+            <span class="ra-sources-row-icon" aria-hidden="true">
+              {#if kind === "search_web"}
+                {#if source.url}
+                  <img
+                    src="https://www.google.com/s2/favicons?domain={getHostname(
+                      source.url,
+                    )}&sz=32"
+                    alt=""
+                    width="16"
+                    height="16"
+                    class="ra-sources-favicon"
+                  />
                 {:else}
-                  <td class="ra-sources-title-cell">
-                    {source.filename}
-                  </td>
-                  <td class="ra-sources-stat">
-                    {#if source.pages && source.pages.length > 0}
-                      {source.pages.join(", ")}
-                    {:else}
-                      -
-                    {/if}
-                  </td>
+                  <svg width="16" height="16" viewBox="0 0 24 24">
+                    <path
+                      fill="currentColor"
+                      d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm6.9 6h-2.6a15.5 15.5 0 0 0-1.3-3.4A8 8 0 0 1 18.9 8zM12 4c.8 1 1.5 2.4 1.9 4h-3.8c.4-1.6 1.1-3 1.9-4zM4.3 14a7.9 7.9 0 0 1 0-4h3a17.6 17.6 0 0 0 0 4h-3zm.8 2h2.6c.3 1.2.7 2.3 1.3 3.4A8 8 0 0 1 5.1 16zM7.7 8H5.1a8 8 0 0 1 3.9-3.4A15.5 15.5 0 0 0 7.7 8zM12 20c-.8-1-1.5-2.4-1.9-4h3.8c-.4 1.6-1.1 3-1.9 4zm2.3-6H9.7a15.6 15.6 0 0 1 0-4h4.6a15.6 15.6 0 0 1 0 4zm.7 5.4c.5-1.1 1-2.2 1.3-3.4h2.6a8 8 0 0 1-3.9 3.4zm1.7-5.4a17.6 17.6 0 0 0 0-4h3a7.9 7.9 0 0 1 0 4h-3z"
+                    />
+                  </svg>
                 {/if}
-                <td class="ra-sources-action-col">
-                  {#if source.url || source.pdfUrl}
-                    <button
-                      type="button"
-                      class="ra-sources-link-btn"
-                      on:click={() => openUrl(source.pdfUrl || source.url)}
-                      title="Open in browser"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24">
-                        <path
-                          fill="currentColor"
-                          d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"
-                        />
-                      </svg>
-                    </button>
-                  {/if}
-                </td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
+              {:else if kind === "search_academic"}
+                <svg width="16" height="16" viewBox="0 0 24 24">
+                  <path
+                    fill="currentColor"
+                    d="M12 3 1 9l4 2.2v6L12 21l7-3.8v-6l2-1.1V17h2V9L12 3zm6.8 6L12 12.7 5.2 9 12 5.3 18.8 9zM17 16.2l-5 2.7-5-2.7v-3.5L12 15l5-2.3v3.5z"
+                  />
+                </svg>
+              {:else}
+                <svg width="16" height="16" viewBox="0 0 24 24">
+                  <path
+                    fill="currentColor"
+                    d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z"
+                  />
+                </svg>
+              {/if}
+            </span>
+
+            <!-- svelte-ignore a11y-click-events-have-key-events -->
+            <!-- svelte-ignore a11y-no-static-element-interactions -->
+            <span
+              class="ra-sources-row-title"
+              class:linkable={!!(source.url || source.pdfUrl || source.fileid)}
+              title={source.filename}
+              on:click={() => {
+                if (source.url || source.pdfUrl) {
+                  openUrl(source.pdfUrl || source.url);
+                } else if (kind === "search_library") {
+                  openFile(source.fileid);
+                }
+              }}
+            >
+              {source.filename}
+            </span>
+
+            <span class="ra-sources-row-meta">
+              {#if kind === "search_web"}
+                {getHostname(source.url)}
+              {:else if kind === "search_academic"}
+                {#if source.citationCount != null}
+                  {source.citationCount} cites
+                {:else}
+                  Semantic Scholar
+                {/if}
+              {:else if source.pages && source.pages.length > 0}
+                p. {source.pages.join(", ")}
+              {/if}
+            </span>
+          </div>
+        {/each}
       </div>
     {/if}
   </div>
@@ -344,6 +255,7 @@
 
   .ra-sources-icon {
     flex-shrink: 0;
+    color: var(--text-muted);
   }
 
   .ra-sources-count {
@@ -359,103 +271,124 @@
     transform: rotate(180deg);
   }
 
-  .ra-sources-table-wrapper {
-    overflow-x: auto;
-    max-height: 200px;
-    overflow-y: auto;
-  }
-
-  .ra-sources-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 12px;
-  }
-
-  .ra-sources-table th,
-  .ra-sources-table td {
-    padding: 6px 10px;
-    text-align: left;
+  .ra-sources-tabs {
+    display: flex;
+    gap: 2px;
+    padding: 6px 8px 0 8px;
     border-bottom: 1px solid var(--background-modifier-border);
+    background: var(--background-primary);
   }
 
-  .ra-sources-table th {
-    background: var(--background-secondary);
-    font-weight: 600;
+  .ra-sources-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border: none;
+    background: transparent;
     color: var(--text-muted);
-    position: sticky;
-    top: 0;
-    z-index: 1;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    border-radius: 6px 6px 0 0;
+    border-bottom: 2px solid transparent;
+    transition:
+      color 0.15s ease,
+      border-color 0.15s ease,
+      background 0.15s ease;
   }
 
-  .ra-sources-table tbody tr:hover {
+  .ra-sources-tab:hover {
+    color: var(--text-normal);
     background: var(--background-modifier-hover);
   }
 
-  .ra-sources-website {
-    white-space: nowrap;
-    max-width: 150px;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  .ra-sources-tab.active {
+    color: var(--text-normal);
+    border-bottom-color: var(--interactive-accent);
   }
 
-  .ra-sources-favicon {
-    display: inline-block;
-    vertical-align: middle;
-    margin-right: 6px;
-    border-radius: 2px;
-  }
-
-  .ra-sources-title-cell {
-    max-width: 250px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .ra-sources-file-cell {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .ra-sources-file-link {
-    color: var(--interactive-accent);
-    cursor: pointer;
-    text-decoration: underline;
-    text-decoration-style: dotted;
-    text-underline-offset: 2px;
-  }
-
-  .ra-sources-file-link:hover {
-    text-decoration-style: solid;
-  }
-
-  .ra-sources-stat {
-    text-align: center;
-    white-space: nowrap;
-    color: var(--text-muted);
-  }
-
-  .ra-sources-action-col {
-    width: 50px;
-    text-align: center;
-  }
-
-  .ra-sources-link-btn {
+  .ra-sources-tab-count {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 4px;
-    background: none;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
+    min-width: 18px;
+    height: 16px;
+    padding: 0 5px;
+    border-radius: 8px;
+    background: var(--background-modifier-border);
     color: var(--text-muted);
-    transition: all 0.15s ease;
+    font-size: 10px;
+    font-weight: 600;
   }
 
-  .ra-sources-link-btn:hover {
+  .ra-sources-tab.active .ra-sources-tab-count {
     background: var(--interactive-accent);
     color: var(--text-on-accent);
+  }
+
+  .ra-sources-list {
+    max-height: 260px;
+    overflow-y: auto;
+    padding: 4px 0;
+  }
+
+  .ra-sources-row {
+    display: grid;
+    grid-template-columns: 20px 1fr auto;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 12px;
+    font-size: 12px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    transition: background 0.12s ease;
+  }
+
+  .ra-sources-row:last-child {
+    border-bottom: none;
+  }
+
+  .ra-sources-row:hover {
+    background: var(--background-modifier-hover);
+  }
+
+  .ra-sources-row-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    width: 16px;
+    height: 16px;
+  }
+
+  .ra-sources-favicon {
+    border-radius: 3px;
+  }
+
+  .ra-sources-row-title {
+    color: var(--text-normal);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ra-sources-row-title.linkable {
+    cursor: pointer;
+  }
+
+  .ra-sources-row-title.linkable:hover {
+    color: var(--interactive-accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .ra-sources-row-meta {
+    color: var(--text-muted);
+    font-size: 11px;
+    white-space: nowrap;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: right;
   }
 </style>

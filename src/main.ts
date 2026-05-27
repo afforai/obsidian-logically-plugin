@@ -83,8 +83,44 @@ export default class LogicallyPluginImpl
   }
 
   async loadSettings(): Promise<void> {
-    const data = (await this.loadData()) as Partial<LogicallySettings> | null;
+    const data = (await this.loadData()) as
+      | (Partial<LogicallySettings> & {
+          searchMode?: string;
+          contextFiles?: string[];
+        })
+      | null;
     this.settings = Object.assign({}, DEFAULT_SETTINGS, data ?? {});
+    // TEMPER-B: drop legacy contextFiles (replaced by connectedNotes via Connect Notes modal).
+    if (data && "contextFiles" in data) {
+      delete (this.settings as unknown as { contextFiles?: unknown })
+        .contextFiles;
+    }
+    if (!Array.isArray(this.settings.connectedNotes)) {
+      this.settings.connectedNotes = [];
+    }
+
+    // B7: migrate legacy `searchMode` scalar → `selectedTools[]`.
+    // "agentic" expands to all three; any other scalar becomes a single-item array.
+    const legacy = data && (data as { searchMode?: string }).searchMode;
+    const hasNewField =
+      data &&
+      Array.isArray((data as { selectedTools?: unknown }).selectedTools);
+    if (!hasNewField) {
+      if (legacy === "agentic") {
+        this.settings.selectedTools = ["files", "google", "semantic"];
+      } else if (
+        legacy === "files" ||
+        legacy === "google" ||
+        legacy === "semantic"
+      ) {
+        this.settings.selectedTools = [legacy];
+      } else {
+        this.settings.selectedTools = ["files"];
+      }
+      // Strip the legacy key from in-memory settings; persist on next save.
+      delete (this.settings as unknown as { searchMode?: unknown }).searchMode;
+      await this.saveData(this.settings);
+    }
   }
 
   async saveSettings(): Promise<void> {

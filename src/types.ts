@@ -4,15 +4,75 @@ import type { ResearchAssistantView } from "./views/researchAssistantView";
 
 export const VIEW_TYPE_RESEARCH_ASSISTANT = "logically-research-assistant";
 
-/** Search modes matching backend tools */
+/** Search modes (UI-level). Multi-select drives v2 tools[] directly. */
 export type SearchMode = "files" | "google" | "semantic";
 
-/** Search mode to backend tool mapping */
+/** Legacy v1 mapping — retained for any caller still reading it; v2 path uses SEARCH_MODE_TO_V2_TOOLS. */
 export const SEARCH_MODE_TO_TOOL: Record<SearchMode, string> = {
   files: "doc_retrieval",
   google: "google",
   semantic: "semantic_scholar",
 };
+
+/** RA v2 canonical tool names (matches backend ToolName + CITATION:* suffix). */
+export type Tool = "search_library" | "search_academic" | "search_web";
+
+/** SearchMode → v2 tool name (single canonical Tool). */
+export const SEARCH_MODE_TO_V2_TOOL: Record<SearchMode, Tool> = {
+  files: "search_library",
+  google: "search_web",
+  semantic: "search_academic",
+};
+
+/** Derive v2 tools[] from a multi-select SearchMode list (B8). */
+export const modesToTools = (modes: SearchMode[]): Tool[] =>
+  modes.map((m) => SEARCH_MODE_TO_V2_TOOL[m]);
+
+/** A single reference row inside a step's citation block. */
+export interface StepRef {
+  title: string;
+  url?: string;
+  domain?: string;
+  icon?: "file" | "globe" | "graduation";
+}
+
+/** Per-step refs payload (tool determines row icon/layout). */
+export interface StepRefs {
+  type: string;
+  data: StepRef[];
+}
+
+/**
+ * Verbatim frontend AccumulatedStep shape — output of buildSteps(stage.data, generatingStarted).
+ * No `type` field: StepIcon derives tool icon from `refs.type` or step `key` prefix.
+ */
+export interface AccumulatedStep {
+  key: string;
+  label: string | null;
+  refs: StepRefs | null;
+  reason: string | null;
+  summary: string | null;
+  done: boolean;
+}
+
+/** Legacy alias — StepRow/StepIcon still typed against this name. */
+export type ThinkingStep = AccumulatedStep;
+
+/** Raw event log mirroring frontend's per-turn stage object. */
+export interface StageData {
+  data: Array<Record<string, unknown>>;
+  status: string;
+}
+
+/**
+ * Turn-level reasoning persisted on ChatMessage. Stage holds the raw event log;
+ * buildSteps re-derives the displayed step list on every render.
+ */
+export interface AccumulatedReasoning {
+  stage: StageData;
+  /** Seconds frozen at .generating_response — drives "Thought for Ns". */
+  timeTaken: number;
+}
 
 /** Model categories matching the frontend design */
 export enum ModelCategory {
@@ -119,12 +179,12 @@ export interface LogicallySettings {
   showRibbon: boolean;
   /** Selected AI model */
   selectedModel: BaseModel;
-  /** Selected search mode */
-  searchMode: SearchMode;
+  /** Selected search tools (multi-select, drives v2 tools[]). */
+  selectedTools: SearchMode[];
   /** Free-form notes included as extra context for completions */
   contextNotes: string;
-  /** Selected vault files to include as context */
-  contextFiles: string[];
+  /** Vault notes whose content is inlined into each completion's system prompt. */
+  connectedNotes: SyncedNote[];
   /** Persisted chat history */
   chatHistory: ChatMessage[];
   /** User privileges (cached from last login/fetch) */
@@ -145,9 +205,9 @@ export const DEFAULT_SETTINGS: LogicallySettings = {
   apiUrl: "https://api.logically.app",
   showRibbon: true,
   selectedModel: "gemini_flash",
-  searchMode: "files",
+  selectedTools: ["files", "semantic", "google"],
   contextNotes: "",
-  contextFiles: [],
+  connectedNotes: [],
   chatHistory: [],
   userPrivileges: [],
   userEmail: "",
@@ -176,6 +236,9 @@ export interface SourceNode {
   citationCount?: number;
   /** Reference count for semantic scholar */
   referenceCount?: number;
+  /** B36: canonical v2 tool that produced this source — drives final-aggregate
+   *  SourcesTable tab grouping (search_library | search_academic | search_web). */
+  toolType?: Tool;
 }
 
 /** Chat message structure */
@@ -187,6 +250,10 @@ export interface ChatMessage {
   model?: string;
   /** Source nodes from citations (for assistant messages) */
   sources?: SourceNode[];
+  /** RA v2 accumulated reasoning incl. step list (assistant messages). */
+  reasoning?: AccumulatedReasoning;
+  /** B26: follow-up question suggestions emitted by backend after answer (assistant messages). */
+  suggestQuestions?: string[];
 }
 
 /** Chat session structure */
@@ -235,6 +302,16 @@ export interface UserInfo {
   last?: string;
   name?: string;
   privileges: Privilege[];
+  /** Personal library ObjectId (B10) — destination for plugin-uploaded notes. */
+  personal_library?: string;
+}
+
+/** A vault note connected for inline-context retrieval (read fresh per query). */
+export interface SyncedNote {
+  /** Obsidian vault-relative path (stable key). */
+  vaultPath: string;
+  /** Display label (basename without extension). */
+  displayName: string;
 }
 
 /** User plan information from /plan endpoint */

@@ -1,5 +1,46 @@
 /* Logically Research Assistant Plugin Styles */
 
+/* B17: Research Assistant design tokens (light defaults + dark variants). */
+:root {
+  --ra-grey-1: var(--background-secondary);
+  --ra-grey-9: var(--text-muted);
+  --ra-grey-11: var(--text-normal);
+  --ra-muted-step: #A1AAA6;
+  --ra-hairline: var(--background-modifier-border);
+  --ra-brand-blue: #1980e6;
+  --ra-brand-blue-bg: rgba(25, 128, 230, 0.15);
+  --ra-icon-bubble-bg: #D8E9FA;
+  --ra-icon-bubble-fg: #3C91E6;
+  --ra-badge-active-fg: #1E8F4D;
+  --ra-badge-active-bg: #E8F4ED;
+  --ra-badge-semi-fg: #C77413;
+  --ra-badge-semi-bg: #F9F1E7;
+  --ra-badge-off-fg: #D12E3E;
+  --ra-badge-off-bg: #FAEAEC;
+  --ra-radius-lg: 12px;
+  --ra-radius-md: 8px;
+  --ra-radius-sm: 6px;
+  --ra-shadow-pop:
+    0 12px 12px -6px rgba(0, 0, 0, 0.06),
+    0 6px 6px -3px rgba(0, 0, 0, 0.06),
+    0 3px 3px -1.5px rgba(0, 0, 0, 0.06),
+    0 1px 1px -0.5px rgba(0, 0, 0, 0.06),
+    0 0 0 1px rgba(0, 0, 0, 0.06);
+  --ra-transition: 150ms ease;
+}
+.theme-dark {
+  --ra-muted-step: #8A9590;
+  --ra-icon-bubble-bg: rgba(60, 145, 230, 0.2);
+  --ra-badge-active-bg: rgba(30, 143, 77, 0.15);
+  --ra-badge-semi-bg: rgba(199, 116, 19, 0.15);
+  --ra-badge-off-bg: rgba(209, 46, 62, 0.15);
+  --ra-shadow-pop:
+    0 12px 24px -8px rgba(0, 0, 0, 0.4),
+    0 4px 8px -2px rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+
 /* Container styling */
 .logically-research-assistant-container {
   display: flex;
@@ -94,4 +135,12 @@
 /* Improve text selection in chat */
 .logically-research-assistant-container .message-content::selection {
   background: var(--text-selection);
+}
+
+/* Thinking panel shimmer (B18: keyframe must be global so child component animation resolves). */
+@keyframes ra-thinking-shimmer {
+  0% { left: -10px; opacity: 1; }
+  16.667% { left: calc(100% + 10px); opacity: 1; }
+  16.668% { left: -10px; opacity: 0; }
+  100% { left: -10px; opacity: 0; }
 }

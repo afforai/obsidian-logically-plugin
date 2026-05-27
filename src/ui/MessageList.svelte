@@ -12,10 +12,13 @@
     ModelEntity,
     SearchMode,
     SourceNode,
+    StageData,
   } from "../types";
   import { AI_MODELS } from "../types";
   import { createEventDispatcher } from "svelte";
   import SourcesTable from "./SourcesTable.svelte";
+  import ThinkingPanel from "./ThinkingPanel.svelte";
+  import SuggestedFollowUps from "./SuggestedFollowUps.svelte";
   import { copyToClipboard } from "../utils/clipboard";
 
   /** Escape HTML special characters to prevent XSS */
@@ -45,6 +48,10 @@
   export let searchMode: SearchMode = "files";
   export let userName: string = "";
   export let models: ModelEntity[] = AI_MODELS;
+  /** Live stage data + generating flag forwarded to ThinkingPanel for the in-flight assistant message. */
+  export let liveStage: StageData | null = null;
+  export let liveGeneratingStarted: boolean = false;
+  export let liveAssistantId: string | null = null;
 
   /** Get user initials from name for avatar (e.g., "Shirayuki Nekomata" → "SN") */
   function getUserInitials(name: string): string {
@@ -94,6 +101,28 @@
       .replace(curlyAny, replacer)
       .replace(squareAny, replacer);
 
+    // B3: bare [N] markers (new backend format). Negative lookahead skips markdown links [label](url).
+    result = result.replace(/\[(\d+)\](?!\()/g, (m, num) => {
+      const idx = Number.parseInt(num, 10) - 1;
+      if (!sources || idx < 0 || idx >= sources.length) return m;
+      usedCitations.add(idx);
+      return `[^${num}]`;
+    });
+
+    // Non-digit slot citations 【fileid†src】 / 【filename†src】 — map to sources index.
+    result = result.replace(/【([^\d】][^†】]*)†[^】]*】/g, (m, slot) => {
+      if (!sources?.length) return m;
+      const idx = sources.findIndex(
+        (x) =>
+          x.fileid === slot ||
+          x.filename === slot ||
+          x.filename?.replace(/\.[^.]+$/, "") === slot,
+      );
+      if (idx < 0) return m;
+      usedCitations.add(idx);
+      return `[^${idx + 1}]`;
+    });
+
     // Generate footnote definitions for used citations
     if (usedCitations.size > 0 && sources && sources.length > 0) {
       const footnotes: string[] = [];
@@ -137,23 +166,89 @@
   ): string {
     if (!content) return content;
 
-    // Match citation tokens: 【N†source】 or 【N†...】
-    return content.replace(/【(\d+)†[^】]*】/g, (match, num) => {
-      const index = parseInt(num, 10) - 1; // Convert to 0-indexed
-      const source = sources?.[index];
+    const markersBefore =
+      (content.match(/【[^】]+】/g) || []).length +
+      (content.match(/\[\d+\](?!\()/g) || []).length;
+    // console.log("[Logically RA] processCitationTokens", {
+    //   len: content.length,
+    //   sources: sources?.length ?? 0,
+    //   markersBefore,
+    // });
 
-      if (source) {
-        const url = source.pdfUrl || source.url;
-        const title = escapeHtml(source.filename || "Source");
-        if (url && isSafeUrl(url)) {
-          return `<sup class="ra-citation-link"><a href="${escapeHtml(url)}" target="_blank" title="${title}">[${num}]</a></sup>`;
-        }
-        // No URL or unsafe URL - just show the number with title tooltip
-        return `<sup class="ra-citation-link" title="${title}">[${num}]</sup>`;
+    // B2: bare [N] markers first (new backend format). Negative lookahead skips markdown
+    // links [label](url). Bounds-gate against sources length so prose like [citation needed]
+    // is left as-is. Run before 【】 pass to avoid double-processing chip output.
+    // Build a pill chip for a resolved source. idx is 1-based display number.
+    const PILL =
+      "display:inline-flex;align-items:center;height:20px;border-radius:10px;background:#ECEEED;" +
+      "padding:2px 6px;font-size:11px;color:#080908;cursor:pointer;white-space:nowrap;" +
+      "max-width:200px;overflow:hidden;vertical-align:middle;margin-left:2px;gap:2px;";
+    const GLOBE_SVG =
+      '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>';
+    const CAP_SVG =
+      '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>';
+    const BOOK_SVG =
+      '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>';
+    function srcIcon(filetype: string): string {
+      if (filetype === "goog") return GLOBE_SVG;
+      if (filetype === "semantic_scholar") return CAP_SVG;
+      return BOOK_SVG;
+    }
+    function pillChip(
+      src: import("../types").SourceNode,
+      displayIdx: number,
+    ): string {
+      const icon = srcIcon(src.filetype ?? "");
+      const title = escapeHtml(src.filename || `Source ${displayIdx}`);
+      const url = src.pdfUrl || src.url;
+      const inner = `${icon}<span style="overflow:hidden;text-overflow:ellipsis;">${title}</span>`;
+      const chip = `<span class="ra-citation-link" data-src-idx="${displayIdx}" style="${PILL}" title="${title}">${inner}</span>`;
+      if (url && isSafeUrl(url)) {
+        return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" style="text-decoration:none;">${chip}</a>`;
       }
-      // Source not found, just show the number
+      return chip;
+    }
+
+    let processed = content.replace(/\[(\d+)\](?!\()/g, (m, num) => {
+      const idx = parseInt(num, 10) - 1;
+      if (!sources || idx < 0 || idx >= sources.length) return m;
+      return pillChip(sources[idx], parseInt(num, 10));
+    });
+
+    // Match citation tokens: 【N†source】 or 【N†...】
+    processed = processed.replace(/【(\d+)†[^】]*】/g, (match, num) => {
+      const index = parseInt(num, 10) - 1;
+      const source = sources?.[index];
+      if (source) return pillChip(source, parseInt(num, 10));
       return `<sup class="ra-citation-link">[${num}]</sup>`;
     });
+
+    // Non-digit slot 【fileid†src】 / 【Welcome.md†source】 — resolve via sources lookup.
+    processed = processed.replace(/【([^\d】][^†】]*)†[^】]*】/g, (m, slot) => {
+      if (!sources?.length) return m;
+      const s = sources.find(
+        (x) =>
+          x.fileid === slot ||
+          x.filename === slot ||
+          x.filename?.replace(/\.[^.]+$/, "") === slot,
+      );
+      if (!s) {
+        return `<sup class="ra-citation-link" title="${escapeHtml(slot)}">[${escapeHtml(slot)}]</sup>`;
+      }
+      const displayIdx = sources.indexOf(s) + 1;
+      return pillChip(s, displayIdx);
+    });
+
+    const markersAfter =
+      (processed.match(/【[^】]+】/g) || []).length +
+      (processed.match(/\[\d+\](?!\()/g) || []).length;
+    // console.log("[Logically RA] processCitationTokens", {
+    //   len: processed.length,
+    //   sources: sources?.length ?? 0,
+    //   markersAfter,
+    // });
+
+    return processed;
   }
 
   const dispatch = createEventDispatcher<{
@@ -161,7 +256,8 @@
     deleteFromIndex: number;
     regenerate: number;
     copy: ChatMessage;
-    openFilePicker: void;
+    openConnectNotes: void;
+    selectFollowUp: string;
   }>();
 
   let listEl: HTMLElement;
@@ -183,6 +279,170 @@
     });
   }
 
+  /**
+   * Inject citation chips as real DOM nodes after MarkdownRenderer.render.
+   * Obsidian sanitizes inline style= and SVGs, so chips must be DOM-built here.
+   */
+  function injectCitationChips(
+    el: HTMLElement,
+    sources: import("../types").SourceNode[] | undefined,
+  ): void {
+    if (!sources || sources.length === 0) return;
+
+    const SVG_NS = "http://www.w3.org/2000/svg";
+
+    function makeSvgIcon(src: import("../types").SourceNode): SVGSVGElement {
+      const filetype = src.filetype ?? "";
+      const toolType = (src as { toolType?: string }).toolType ?? "";
+      const isWeb = filetype === "goog" || toolType === "search_web";
+      const isAcademic =
+        filetype === "semantic_scholar" || toolType === "search_academic";
+
+      const svg = document.createElementNS(SVG_NS, "svg") as SVGSVGElement;
+      svg.setAttribute("width", "12");
+      svg.setAttribute("height", "12");
+      svg.setAttribute("fill", "currentColor");
+      (svg as unknown as HTMLElement).style.flexShrink = "0";
+
+      const p = document.createElementNS(SVG_NS, "path");
+      if (isWeb) {
+        svg.setAttribute("viewBox", "0 0 12 12");
+        p.setAttribute(
+          "d",
+          "M6 0.625C3.036 0.625 0.625 3.0365 0.625 6C0.625 8.9635 3.036 11.375 6 11.375C8.964 11.375 11.375 8.9635 11.375 6C11.375 3.0365 8.964 0.625 6 0.625ZM10.606 5.625H8.58099C8.51549 4.2535 8.09349 2.85601 7.36349 1.58051C9.13499 2.12851 10.4515 3.715 10.606 5.625ZM6.36501 1.39349C7.24301 2.69899 7.75449 4.18 7.83099 5.625H4.16901C4.24501 4.18 4.75699 2.69899 5.63499 1.39349C5.75599 1.38399 5.877 1.375 6 1.375C6.123 1.375 6.24451 1.38399 6.36501 1.39349ZM4.63651 1.58051C3.90651 2.85601 3.48451 4.2535 3.41901 5.625H1.394C1.5485 3.715 2.86501 2.12851 4.63651 1.58051ZM1.394 6.375H3.41901C3.48451 7.7465 3.90651 9.14399 4.63651 10.4195C2.86501 9.87149 1.5485 8.285 1.394 6.375ZM5.63499 10.6065C4.75699 9.30101 4.24551 7.82 4.16901 6.375H7.83099C7.75499 7.82 7.24301 9.30101 6.36501 10.6065C6.24401 10.616 6.123 10.625 6 10.625C5.877 10.625 5.75549 10.616 5.63499 10.6065ZM7.36349 10.4195C8.09349 9.14399 8.51549 7.7465 8.58099 6.375H10.606C10.4515 8.285 9.13499 9.87149 7.36349 10.4195Z",
+        );
+      } else if (isAcademic) {
+        svg.setAttribute("viewBox", "0 0 24 24");
+        p.setAttribute(
+          "d",
+          "M21.75 9.696C21.75 8.659 21.2059 7.74293 20.2959 7.24593L13.824 3.71492C12.683 3.09292 11.32 3.09192 10.176 3.71492L3.7041 7.24593C2.7941 7.74293 2.25 8.659 2.25 9.696C2.25 10.733 2.7941 11.649 3.7041 12.146L5.25 12.989V16.6989C5.25 17.6549 5.74004 18.533 6.56104 19.05C8.36603 20.185 10.183 20.753 12 20.753C13.817 20.753 15.635 20.186 17.439 19.05C18.259 18.534 18.75 17.6549 18.75 16.6989V12.989L20.25 12.171V16C20.25 16.414 20.586 16.75 21 16.75C21.414 16.75 21.75 16.414 21.75 16V9.99996C21.75 9.95796 21.7321 9.91996 21.7261 9.87996C21.7301 9.81696 21.75 9.76 21.75 9.696ZM17.25 16.6989C17.25 17.1289 17.0171 17.544 16.6411 17.78C13.5191 19.743 10.4841 19.744 7.36011 17.78C6.98411 17.544 6.75098 17.1289 6.75098 16.6989V13.807L10.177 15.676C10.748 15.988 11.374 16.144 12.001 16.144C12.628 16.144 13.254 15.988 13.825 15.676L17.251 13.807V16.6989H17.25ZM19.5769 10.8299L13.105 14.3609C12.414 14.7389 11.585 14.7389 10.894 14.3609L4.42212 10.8299C4.00012 10.5999 3.74902 10.177 3.74902 9.69698C3.74902 9.21698 4.00012 8.79392 4.42212 8.56392L10.894 5.03292C11.24 4.84492 11.62 4.74996 11.999 4.74996C12.378 4.74996 12.759 4.84492 13.104 5.03292L19.5759 8.56392C19.9979 8.79392 20.249 9.21698 20.249 9.69698C20.249 10.177 19.9989 10.5999 19.5769 10.8299Z",
+        );
+      } else {
+        svg.setAttribute("viewBox", "0 0 24 24");
+        p.setAttribute(
+          "d",
+          "M22.679 18.611L22.1631 16.1851V16.184V16.183L20.1001 6.47709C20.1001 6.47609 20.1001 6.47504 20.1001 6.47404C20.1001 6.47304 20.0991 6.47199 20.0991 6.47099L19.584 4.04606C19.438 3.36106 19.1291 2.86002 18.6631 2.55802C18.1971 2.25602 17.616 2.17506 16.929 2.32206L14.988 2.73502C14.363 2.86802 13.897 3.15206 13.594 3.54606C13.289 2.72206 12.554 2.25102 11.502 2.25102H9.50195C8.88095 2.25102 8.37895 2.42299 8.00195 2.72599C7.62495 2.42299 7.12295 2.25102 6.50195 2.25102H4.50195C3.09295 2.25102 2.25195 3.09202 2.25195 4.50102V19.501C2.25195 20.91 3.09295 21.751 4.50195 21.751H6.50195C7.12295 21.751 7.62495 21.579 8.00195 21.276C8.37895 21.579 8.88095 21.751 9.50195 21.751H11.502C12.911 21.751 13.752 20.91 13.752 19.501V7.69108L15.843 17.5251C15.843 17.5261 15.843 17.526 15.843 17.527C15.843 17.528 15.844 17.5281 15.844 17.5291L16.3601 19.954C16.5061 20.639 16.815 21.1401 17.281 21.4421C17.596 21.6471 17.9651 21.7491 18.3831 21.7491C18.5821 21.7491 18.7941 21.726 19.0161 21.678L20.957 21.2651C21.643 21.1191 22.1441 20.809 22.4451 20.344C22.7451 19.879 22.825 19.295 22.679 18.611ZM3.75 7.75004H7.25V16.25H3.75V7.75004ZM8.75 7.75004H12.25V16.25H8.75V7.75004ZM9.5 3.75004H11.5C12.089 3.75004 12.25 3.91104 12.25 4.50004V6.25004H8.75V4.50004C8.75 3.91104 8.911 3.75004 9.5 3.75004ZM4.5 3.75004H6.5C7.089 3.75004 7.25 3.91104 7.25 4.50004V6.25004H3.75V4.50004C3.75 3.91104 3.911 3.75004 4.5 3.75004ZM6.5 20.25H4.5C3.911 20.25 3.75 20.089 3.75 19.5V17.75H7.25V19.5C7.25 20.089 7.089 20.25 6.5 20.25ZM11.5 20.25H9.5C8.911 20.25 8.75 20.089 8.75 19.5V17.75H12.25V19.5C12.25 20.089 12.089 20.25 11.5 20.25ZM15.3989 8.23808L18.7881 7.51798L20.54 15.761L17.1521 16.481L15.3989 8.23808ZM15.2981 4.20109L17.24 3.788C17.337 3.767 17.4521 3.75004 17.5601 3.75004C17.6681 3.75004 17.77 3.76698 17.844 3.81498C17.993 3.91198 18.074 4.16309 18.115 4.35709L18.4751 6.05106L15.0859 6.77103L14.7261 5.07707C14.6071 4.51007 14.7291 4.32109 15.2981 4.20109ZM21.1851 19.528C21.0881 19.677 20.837 19.757 20.644 19.799C20.643 19.799 20.6431 19.799 20.6431 19.799L18.7009 20.2121C18.5079 20.2531 18.2449 20.2811 18.0969 20.1851C17.9479 20.0881 17.8669 19.837 17.8259 19.643L17.4661 17.949L20.854 17.229L21.2141 18.923C21.2531 19.117 21.2821 19.378 21.1851 19.528Z",
+        );
+      }
+      svg.appendChild(p);
+      return svg;
+    }
+
+    function makeChip(
+      src: import("../types").SourceNode,
+      displayIdx: number,
+    ): HTMLElement {
+      const chip = document.createElement("span");
+      chip.className = "ra-citation-chip ra-citation-link";
+      chip.setAttribute("data-src-idx", String(displayIdx));
+      chip.style.display = "inline-flex";
+      chip.style.alignItems = "center";
+      chip.style.height = "18px";
+      chip.style.borderRadius = "9px";
+      chip.style.background = "var(--background-modifier-hover)";
+      chip.style.border = "1px solid var(--background-modifier-border)";
+      chip.style.padding = "1px 5px";
+      chip.style.fontSize = "10px";
+      chip.style.color = "var(--text-muted)";
+      chip.style.cursor = "pointer";
+      chip.style.whiteSpace = "nowrap";
+      chip.style.maxWidth = "200px";
+      chip.style.overflow = "hidden";
+      chip.style.verticalAlign = "middle";
+      chip.style.marginLeft = "2px";
+      chip.style.gap = "3px";
+      chip.addEventListener("mouseenter", () => {
+        chip.style.background = "var(--background-modifier-active-hover)";
+        chip.style.color = "var(--text-normal)";
+      });
+      chip.addEventListener("mouseleave", () => {
+        chip.style.background = "var(--background-modifier-hover)";
+        chip.style.color = "var(--text-muted)";
+      });
+      const title = src.filename || src.url || `Source ${displayIdx}`;
+      chip.title = title;
+      chip.appendChild(makeSvgIcon(src));
+      const label = document.createElement("span");
+      label.style.overflow = "hidden";
+      label.style.textOverflow = "ellipsis";
+      label.textContent = title.length > 22 ? title.slice(0, 20) + "…" : title;
+      chip.appendChild(label);
+
+      const url = src.pdfUrl || src.url;
+      if (url && isSafeUrl(url)) {
+        const a = document.createElement("a") as HTMLAnchorElement;
+        a.href = url;
+        a.target = "_blank";
+        a.rel = "noopener";
+        a.style.textDecoration = "none";
+        a.appendChild(chip);
+        return a;
+      }
+      return chip;
+    }
+
+    // Collect all text nodes once.
+    const collectTextNodes = (): Text[] => {
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      const out: Text[] = [];
+      let n: Node | null;
+      while ((n = walker.nextNode())) out.push(n as Text);
+      return out;
+    };
+
+    // Walk text nodes, replace [N], 【N†...】, and 【slot†...】 with chip elements.
+    // Three capture groups: (1) digit from [N], (2) digit from 【N†】, (3) slot from 【slot†】
+    const CITE_RE =
+      /\[(\d+)\](?!\()|【(\d+)†[^】]*】|【([^\d】][^†】]*)†[^】]*】/g;
+
+    for (const textNode of collectTextNodes()) {
+      const text = textNode.nodeValue ?? "";
+      if (!CITE_RE.test(text)) continue;
+      CITE_RE.lastIndex = 0;
+
+      const parent = textNode.parentNode;
+      if (!parent) continue;
+
+      const frag = document.createDocumentFragment();
+      let last = 0;
+      let m: RegExpExecArray | null;
+      let anyMatch = false;
+
+      while ((m = CITE_RE.exec(text)) !== null) {
+        anyMatch = true;
+        if (m.index > last) {
+          frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+        }
+
+        let idx = -1;
+        if (m[1] !== undefined || m[2] !== undefined) {
+          idx = parseInt(m[1] ?? m[2], 10) - 1;
+        } else if (m[3] !== undefined) {
+          const slot = m[3];
+          idx = sources.findIndex(
+            (x) =>
+              x.fileid === slot ||
+              x.filename === slot ||
+              x.filename?.replace(/\.[^.]+$/, "") === slot,
+          );
+        }
+
+        if (idx >= 0 && sources[idx]) {
+          frag.appendChild(makeChip(sources[idx], idx + 1));
+        }
+        // OOB or unresolved: drop token silently (no raw text left in DOM)
+
+        last = m.index + m[0].length;
+      }
+
+      if (!anyMatch) continue;
+      if (last < text.length) {
+        frag.appendChild(document.createTextNode(text.slice(last)));
+      }
+      parent.replaceChild(frag, textNode);
+    }
+  }
+
   async function renderMarkdown(
     el: HTMLElement,
     content: string,
@@ -190,15 +450,14 @@
   ) {
     el.empty();
     try {
-      // Process citation tokens before rendering
-      const processedContent = processCitationTokens(content, sources);
-      await MarkdownRenderer.render(
-        app,
-        processedContent,
-        el,
-        "",
-        markdownComponent,
-      );
+      // Convert [N] to 【N†cite】 before rendering so Obsidian's markdown parser
+      // doesn't consume them as footnote references. 【】 are not markdown syntax
+      // and survive the renderer intact as plain text nodes for injectCitationChips.
+      const prepared = sources?.length
+        ? content.replace(/\[(\d+)\](?!\()/g, (_m, n) => `【${n}†cite】`)
+        : content;
+      await MarkdownRenderer.render(app, prepared, el, "", markdownComponent);
+      injectCitationChips(el, sources);
     } catch (e) {
       console.warn("[MessageList] Markdown render error:", e);
       el.textContent = content;
@@ -217,8 +476,8 @@
     dispatch("regenerate", index);
   }
 
-  function handleOpenFilePicker() {
-    dispatch("openFilePicker");
+  function handleOpenConnectNotes() {
+    dispatch("openConnectNotes");
   }
 
   function showCopyPopover(event: MouseEvent, message: ChatMessage) {
@@ -242,7 +501,7 @@
         .setIcon("copy")
         .onClick(async () => {
           const content = (message.content || "").replace(
-            /【\d+†[^】]*】/g,
+            /【[^】]+†[^】]*】/g,
             "",
           );
           const ok = await copyToClipboard(content);
@@ -293,7 +552,7 @@
           .setIcon("copy")
           .onClick(async () => {
             const content = (message.content || "").replace(
-              /【\d+†[^】]*】/g,
+              /【[^】]+†[^】]*】/g,
               "",
             );
             const ok = await copyToClipboard(content);
@@ -338,7 +597,12 @@
 
       // Include sources in the content hash for re-render check
       const sourcesHash = msg.sources
-        ? JSON.stringify(msg.sources.length)
+        ? msg.sources.length +
+          "|" +
+          (msg.sources[0]?.url ??
+            msg.sources[0]?.fileid ??
+            msg.sources[0]?.filename ??
+            "")
         : "0";
       const contentKey = `${msg.content}|${sourcesHash}`;
       const currentContent = contentEl.getAttribute("data-content");
@@ -400,8 +664,8 @@
         <button
           type="button"
           class="file-hint"
-          on:click={handleOpenFilePicker}
-          title="Open reference file picker"
+          on:click={handleOpenConnectNotes}
+          title="Connect vault notes to library"
         >
           <svg
             width="14"
@@ -415,7 +679,7 @@
             <polyline points="17 8 12 3 7 8" />
             <line x1="12" y1="3" x2="12" y2="15" />
           </svg>
-          <span>Drag files here or click to choose files</span>
+          <span>Connect vault notes to your library</span>
         </button>
       {/if}
     </div>
@@ -459,6 +723,17 @@
             >
             <span class="message-time">{formatTime(message.timestamp)}</span>
           </div>
+          <!-- RA v2 thinking panel (live shimmer / frozen "Thought for Ns" + StepList). -->
+          {#if message.role === "assistant" && (message.reasoning || (isLoading && index === messages.length - 1))}
+            <ThinkingPanel
+              reasoning={message.reasoning}
+              isLive={isLoading && index === messages.length - 1}
+              liveStage={message.id === liveAssistantId ? liveStage : null}
+              liveGeneratingStarted={message.id === liveAssistantId
+                ? liveGeneratingStarted
+                : false}
+            />
+          {/if}
           <div class="message-content">
             {#if message.role === "user"}
               {message.content || "..."}
@@ -469,6 +744,13 @@
           <!-- Sources table for assistant messages with citations -->
           {#if message.role === "assistant" && message.sources && message.sources.length > 0}
             <SourcesTable sources={message.sources} {app} />
+          {/if}
+          {#if message.role === "assistant" && message.suggestQuestions && message.suggestQuestions.length > 0}
+            <SuggestedFollowUps
+              questions={message.suggestQuestions}
+              disabled={isLoading}
+              on:select={(e) => dispatch("selectFollowUp", e.detail)}
+            />
           {/if}
           <!-- Action buttons at bottom-right -->
           <div class="message-actions">

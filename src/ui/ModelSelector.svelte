@@ -278,15 +278,15 @@
   .model-tag {
     font-size: 11px;
     font-weight: 600;
-    color: #1980e6;
-    background: rgba(25, 128, 230, 0.15);
+    color: var(--ra-brand-blue);
+    background: var(--ra-brand-blue-bg);
     padding: 2px 6px;
-    border-radius: 4px;
+    border-radius: var(--ra-radius-sm);
   }
 
   .chevron {
     color: var(--text-muted);
-    transition: transform 0.15s ease;
+    transition: transform var(--ra-transition);
     flex-shrink: 0;
   }
 
@@ -301,8 +301,8 @@
     right: 0;
     margin-top: 4px;
     background: var(--background-primary);
-    border-radius: 8px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    border-radius: var(--ra-radius-md);
+    box-shadow: var(--ra-shadow-pop);
     z-index: 1000;
     max-height: min(70vh, 640px);
     overflow-y: auto;

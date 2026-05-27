@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { onMount } from "svelte";
   import { Notice, TFile, type App } from "obsidian";
   import type {
     LogicallyPlugin,
@@ -9,14 +9,22 @@
     Privilege,
     SearchMode,
     SourceNode,
+    SyncedNote,
+    Tool,
   } from "../types";
-  import { AI_MODELS, DEFAULT_SETTINGS, PRIVILEGES } from "../types";
+  import {
+    AI_MODELS,
+    DEFAULT_SETTINGS,
+    PRIVILEGES,
+    modesToTools,
+  } from "../types";
   import ChatInput from "./ChatInput.svelte";
   import MessageList from "./MessageList.svelte";
   import LoginPrompt from "./LoginPrompt.svelte";
-  import FilePicker from "./FilePicker.svelte";
+  import ConnectNotesModal from "./ConnectNotesModal.svelte";
   import UpgradeModal from "./UpgradeModal.svelte";
   import SettingsPanel from "./SettingsPanel.svelte";
+  // buildSteps is consumed inside ThinkingPanel; recorder here just writes raw events.
 
   export let plugin: LogicallyPlugin;
   export let app: App;
@@ -25,12 +33,12 @@
   let isLoading = false;
   let currentResponse = "";
   let selectedModel: BaseModel = plugin.settings.selectedModel;
-  let selectedMode: SearchMode = plugin.settings.searchMode ?? "files";
+  let selectedTools: SearchMode[] = plugin.settings.selectedTools ?? ["files"];
   let isAuthenticated = plugin.api.isAuthenticated();
-  let contextFiles: string[] = plugin.settings.contextFiles ?? [];
-  let filesExpanded = false;
-  let isDraggingOver = false;
-  let filePickerRef: FilePicker | null = null;
+  let connectedNotes: SyncedNote[] = plugin.settings.connectedNotes ?? [];
+  let personalLibraryId: string | null = null;
+  let connectModalOpen = false;
+  let connectSyncing = false;
   let userPrivileges: Privilege[] = plugin.settings.userPrivileges ?? [];
   let userName: string = plugin.settings.userName ?? "";
   let loginPromptMode: "none" | "page" | "modal" = "none";
@@ -59,9 +67,9 @@
   $: maxFiles = computeMaxFiles(userPrivileges, isAuthenticated);
 
   $: if (maxFiles !== lastMaxFiles) {
-    if (contextFiles.length > maxFiles) {
-      contextFiles = contextFiles.slice(0, maxFiles);
-      plugin.settings.contextFiles = contextFiles;
+    if (connectedNotes.length > maxFiles) {
+      connectedNotes = connectedNotes.slice(0, maxFiles);
+      plugin.settings.connectedNotes = connectedNotes;
       void plugin.saveSettings();
     }
     lastMaxFiles = maxFiles;
@@ -69,7 +77,7 @@
 
   // Upgrade modal state
   let showUpgradeModal = false;
-  let upgradeModalType: "advanced" | "reasoning" = "advanced";
+  let upgradeModalType: "advanced" | "reasoning" | "quota" = "advanced";
 
   // Settings panel state
   let showSettingsPanel = false;
@@ -128,53 +136,86 @@
     }
   }
 
-  async function handleModeChange(mode: SearchMode) {
-    selectedMode = mode;
-    plugin.settings.searchMode = mode;
+  async function handleToolsChange(next: SearchMode[]) {
+    selectedTools = next;
+    plugin.settings.selectedTools = next;
     await plugin.saveSettings();
   }
 
-  async function handleFilesChange(files: string[]) {
-    contextFiles = files;
-    plugin.settings.contextFiles = files;
-    await plugin.saveSettings();
+  async function ensurePersonalLibraryId(): Promise<string | null> {
+    if (personalLibraryId) return personalLibraryId;
+    const res = await plugin.api.getCurrentUser();
+    if (res.success && res.data?.personal_library) {
+      personalLibraryId = res.data.personal_library;
+      return personalLibraryId;
+    }
+    return null;
   }
 
-  function handleToggleFiles() {
-    filesExpanded = !filesExpanded;
+  async function handleOpenConnectNotes() {
+    if (!isAuthenticated) {
+      loginPromptMode = "modal";
+      return;
+    }
+    const lib = await ensurePersonalLibraryId();
+    if (!lib) {
+      new Notice("Could not determine your library. Try signing in again.");
+      return;
+    }
+    connectModalOpen = true;
   }
 
-  async function handleOpenFilePicker() {
-    if (selectedMode !== "files") return;
-    filesExpanded = true;
-    await tick();
-    await filePickerRef?.openDropdown?.();
+  async function handleConnectSubmit(notes: TFile[]) {
+    if (notes.length === 0) {
+      connectedNotes = [];
+      plugin.settings.connectedNotes = [];
+      await plugin.saveSettings();
+      connectModalOpen = false;
+      return;
+    }
+    connectSyncing = true;
+    try {
+      // B19: persist vault path + display name only — content is read fresh per query.
+      const next: SyncedNote[] = notes.map((f) => ({
+        vaultPath: f.path,
+        displayName: f.basename,
+      }));
+      connectedNotes = next;
+      plugin.settings.connectedNotes = next;
+      await plugin.saveSettings();
+      new Notice(`Connected ${next.length} note(s) as inline context.`);
+      connectModalOpen = false;
+    } finally {
+      connectSyncing = false;
+    }
   }
 
+  /**
+   * B19: read each connected note from the vault and return its content for
+   * inline injection into the completion's system prompt. Missing files are
+   * skipped silently.
+   */
   async function getContextFromFiles(): Promise<
-    Array<{ type: "file"; data: string }>
+    { path: string; content: string }[]
   > {
-    if (contextFiles.length === 0) return [];
-
-    const attachments: Array<{ type: "file"; data: string }> = [];
-    for (const filePath of contextFiles) {
+    if (!selectedTools.includes("files") || connectedNotes.length === 0) {
+      return [];
+    }
+    const out: { path: string; content: string }[] = [];
+    for (const note of connectedNotes) {
+      const tfile = app.vault.getAbstractFileByPath(note.vaultPath);
+      if (!(tfile instanceof TFile)) continue;
       try {
-        const file = app.vault.getAbstractFileByPath(filePath);
-        if (!(file instanceof TFile)) continue;
-        if (file.extension !== "md") continue;
-
-        const content = await app.vault.cachedRead(file);
-        attachments.push({
-          type: "file",
-          data: `## ${file.basename}\n\n${content}`,
-        });
-      } catch (e) {
-        console.warn(`[Logically] Could not read file: ${filePath}`, e);
+        const content = await app.vault.cachedRead(tfile);
+        out.push({ path: note.vaultPath, content });
+      } catch {
+        /* skip unreadable */
       }
     }
-
-    return attachments;
+    return out;
   }
+
+  $: hasLibraryTool = selectedTools.includes("files");
 
   function getCustomInstructionContext(): string {
     const instruction = plugin.settings.customInstruction?.trim();
@@ -183,14 +224,16 @@
   }
 
   /**
-   * Convert context files to SourceNode entries for display in the sources table.
+   * Connected notes as SourceNode fallback (when backend citations empty).
+   * Uses vaultPath as fileid so insertToNote can build [[wiki]] links.
    */
-  function getContextFilesAsSources(): SourceNode[] {
-    if (selectedMode !== "files" || contextFiles.length === 0) return [];
-
-    return contextFiles.map((filePath) => ({
-      fileid: filePath,
-      filename: filePath.split("/").pop()?.replace(/\.md$/, "") || filePath,
+  function getConnectedNotesAsSources(): SourceNode[] {
+    if (!selectedTools.includes("files") || connectedNotes.length === 0)
+      return [];
+    return connectedNotes.map((n) => ({
+      fileid: n.vaultPath,
+      filename:
+        n.vaultPath.split("/").pop()?.replace(/\.md$/, "") || n.vaultPath,
       filetype: "reference",
     }));
   }
@@ -199,6 +242,41 @@
    * Handle errors from the API, with special handling for quota errors.
    */
   function handleApiError(error: string, assistantMessage: ChatMessage): void {
+    // B5: RA v2 STATUS-routed quota & error tokens.
+    if (
+      error === ".combined_quota_exceeded" ||
+      error === ".combined_quota_visitor_denied" ||
+      error === ".combined_quota_visitor_blocked"
+    ) {
+      if (!isAuthenticated) loginPromptMode = "modal";
+      upsertMessage({
+        ...assistantMessage,
+        content: `**Combined search quota reached**\n\nYou've used your combined library + web + academic quota for this period. [Upgrade your plan](https://logically.app/pricing) to continue.`,
+      });
+      isLoading = false;
+      currentResponse = "";
+      return;
+    }
+    if (error === ".error_v2") {
+      upsertMessage({
+        ...assistantMessage,
+        content: `**Search pipeline error**\n\nThe research assistant encountered an internal error. Please try again.`,
+      });
+      isLoading = false;
+      currentResponse = "";
+      return;
+    }
+    // Credit quota (422 HTTP, LTD users)
+    if (error.includes("credit_quota")) {
+      upsertMessage({
+        ...assistantMessage,
+        content: `**You've used your credits**\n\nYou've reached your credit limit for this period. Upgrade your plan to continue.`,
+      });
+      handleShowUpgrade("quota");
+      isLoading = false;
+      currentResponse = "";
+      return;
+    }
     // Check for query quota error
     if (
       error.includes("query_quota") ||
@@ -215,12 +293,394 @@
     } else {
       upsertMessage({
         ...assistantMessage,
-        content: `Error: ${error}`,
+        content: `Something went wrong. Please try again.`,
       });
     }
     isLoading = false;
     currentResponse = "";
   }
+
+  // Live stage tracking per in-flight assistant turn — referenced by MessageList → ThinkingPanel
+  // while streaming so buildSteps re-derives steps every render. Frozen onto message.reasoning
+  // at onComplete.
+  let liveStage: {
+    data: Array<Record<string, unknown>>;
+    status: string;
+  } | null = null;
+  let liveGeneratingStarted = false;
+  let liveAssistantId: string | null = null;
+
+  // Verbatim frontend stage recorder. Writes raw events into stage.data; buildSteps
+  // re-derives the displayed steps every render (no plugin-side accumulator state).
+  function makeStageRecorder(assistantMessage: ChatMessage) {
+    const stage: { data: Array<Record<string, unknown>>; status: string } = {
+      data: [],
+      status: "",
+    };
+    liveStage = stage;
+    liveAssistantId = assistantMessage.id;
+    liveGeneratingStarted = false;
+    const startTs = Date.now();
+    let secondsAtFreeze = 0;
+
+    // B1: dedup search_start across onStatus (.searching_*) + onTool (v2 TOOL frame).
+    // Frontend update_chat.ts:188-194 emits search_start from STATUS-token translation;
+    // we mirror that path here AND keep the TOOL-frame path for v2 backends.
+    const seenStarts = new Set<string>();
+    const SEARCH_TOOL_MAP: Record<string, Tool> = {
+      ".searching_academic": "search_academic",
+      ".searching_web": "search_web",
+      ".searching_library": "search_library",
+    };
+
+    const onReason = (p: {
+      type?: string;
+      summary?: string;
+      reason?: string;
+      tool?: string;
+      tool_decisions?: Record<string, { summary: string; reason: string }>;
+    }) => {
+      stage.status = "return_reason";
+      stage.data = [
+        ...stage.data,
+        { type: "reason", summary: p.summary, reason: p.reason },
+      ];
+      if (p.tool_decisions) {
+        for (const [tool, d] of Object.entries(p.tool_decisions)) {
+          stage.data = [
+            ...stage.data,
+            {
+              type: "tool_decision",
+              tool,
+              summary: d.summary,
+              reason: d.reason,
+            },
+          ];
+        }
+      }
+      // Force reactivity ping by reassigning liveStage reference.
+      liveStage = stage;
+      messages = messages;
+    };
+
+    const onTool = (p: { name: string; phase: "start" | "end" }) => {
+      // B2: TOOL phase==="start" → frontend's `search_start` event. Dedup with onStatus.
+      if (p.phase === "start" && p.name && !seenStarts.has(p.name)) {
+        seenStarts.add(p.name);
+        stage.data = [...stage.data, { type: "search_start", tool: p.name }];
+        liveStage = stage;
+        messages = messages;
+      }
+    };
+
+    const onCitationTool = (
+      tool: string,
+      rawPayload: Record<string, unknown>,
+    ) => {
+      stage.data = [
+        ...stage.data,
+        { type: "citation", tool, payload: rawPayload },
+      ];
+      liveStage = stage;
+      messages = messages;
+    };
+
+    const onStatus = (token: string) => {
+      // B1: mirror frontend update_chat.ts:188-194 — STATUS .searching_* tokens
+      // are the canonical search_start source for legacy-pipeline backends.
+      const mapped = SEARCH_TOOL_MAP[token];
+      if (mapped && !seenStarts.has(mapped)) {
+        seenStarts.add(mapped);
+        stage.data = [...stage.data, { type: "search_start", tool: mapped }];
+        liveStage = stage;
+        messages = messages;
+      }
+      stage.status = token;
+      if (token === ".generating_response" && !liveGeneratingStarted) {
+        liveGeneratingStarted = true;
+        secondsAtFreeze = Math.floor((Date.now() - startTs) / 1000);
+        messages = messages;
+      }
+    };
+
+    const finalize = () => {
+      if (!liveGeneratingStarted) {
+        liveGeneratingStarted = true;
+        secondsAtFreeze = Math.floor((Date.now() - startTs) / 1000);
+      }
+    };
+
+    const snapshot = () => ({
+      stage: { data: [...stage.data], status: stage.status },
+      timeTaken: secondsAtFreeze || Math.floor((Date.now() - startTs) / 1000),
+    });
+
+    return { onReason, onTool, onCitationTool, onStatus, finalize, snapshot };
+  }
+
+  function clearLiveStage(assistantId: string) {
+    if (liveAssistantId === assistantId) {
+      liveStage = null;
+      liveAssistantId = null;
+      liveGeneratingStarted = false;
+    }
+  }
+
+  /* removed legacy makeV2Callbacks body (replaced by makeStageRecorder):
+    const acc = { steps: [], startTs: Date.now() } as any;
+    let idx = 0;
+    // B1-fix: dedupe gate — backend emits TOOL + STATUS legacy + STATUS tool_start
+    // for the same tool. Skip subsequent pushes if an open step already exists.
+    const hasOpenStepForTool = (tool: Tool) =>
+      acc.steps.some((s) => s.type === tool && !s.done);
+    const flush = () => {
+      upsertMessage({
+        ...assistantMessage,
+        reasoning: { ...acc, steps: [...acc.steps] },
+      });
+    };
+    const pushStep = (s: ThinkingStep) => {
+      acc.steps.push(s);
+      flush();
+    };
+    // B35: backend may conflate summary with full CoT prelude — clamp to single
+    // line / 120 chars so multi-line reasoning never leaks into the step label.
+    const truncateLabel = (s: string | undefined) =>
+      (s ?? "").split("\n")[0].slice(0, 120);
+
+    const onReason = (p: {
+      type?: string;
+      summary?: string;
+      reason?: string;
+      tool?: string;
+    }) => {
+      if (p.type === "tool_decision") {
+        pushStep({
+          key: `td-${p.tool ?? "x"}-${idx++}`,
+          type: "tool_decision",
+          label: truncateLabel(p.summary) || `Considered ${p.tool ?? "tool"}`,
+          reason: p.reason,
+          done: true,
+        });
+      } else {
+        // Default: reason frame ({summary, reason}).
+        pushStep({
+          key: `r-${idx++}`,
+          type: "reason",
+          label: truncateLabel(p.summary) || "Analysed question",
+          reason: p.reason,
+          done: true,
+        });
+      }
+    };
+
+    const onTool = (p: {
+      name: Tool | string;
+      phase: "start" | "end";
+      status?: "ok" | "failed" | "timeout";
+      count?: number;
+    }) => {
+      if (p.phase !== "start") return;
+      const tool = p.name as Tool;
+      if (
+        tool !== "search_library" &&
+        tool !== "search_web" &&
+        tool !== "search_academic"
+      ) {
+        return;
+      }
+      if (hasOpenStepForTool(tool)) return;
+      pushStep({
+        key: `s-${tool}-${idx++}`,
+        type: tool,
+        label: STARTING_TOOL_LABELS[tool],
+        done: false,
+      });
+    };
+
+    const onCitation = (p: {
+      tool: string;
+      metadatas: Record<string, unknown>;
+      sources?: SourceNode[];
+    }) => {
+      const tool = p.tool as Tool;
+      if (
+        tool !== "search_library" &&
+        tool !== "search_web" &&
+        tool !== "search_academic"
+      ) {
+        return;
+      }
+      // B3-fix: prefer metadatas-built refs; fallback to payload.sources when
+      // backend sends empty metadatas but populated nodes.
+      let effectiveRefs = buildRefsFromMetadatas(p.metadatas, tool);
+      if (
+        (!effectiveRefs || effectiveRefs.data.length === 0) &&
+        p.sources &&
+        p.sources.length > 0
+      ) {
+        effectiveRefs = {
+          type: tool,
+          data: p.sources.map((n) => ({
+            title: n.filename || n.url || "Untitled",
+            url: n.url,
+            domain: n.url
+              ? extractDomain(n.url)
+              : tool === "search_library"
+                ? "Library"
+                : tool === "search_academic"
+                  ? "Academic"
+                  : "",
+            icon:
+              tool === "search_library"
+                ? "file"
+                : tool === "search_academic"
+                  ? "graduation"
+                  : "globe",
+          })),
+        };
+      }
+      const count = effectiveRefs?.data.length ?? 0;
+      const label =
+        count > 0
+          ? DONE_TOOL_LABELS[tool].replace("{{number-here}}", String(count))
+          : NO_RESULTS_LABELS[tool];
+      // Finalize matching open search step, else append a fresh done step.
+      let matched = false;
+      for (let i = acc.steps.length - 1; i >= 0; i--) {
+        const s = acc.steps[i];
+        if (s.type === tool && !s.done) {
+          // B33: replace OBJECT IDENTITY so Svelte StepRow keyed by step.key
+          // re-renders and the refs block actually paints.
+          acc.steps[i] = {
+            ...s,
+            done: true,
+            label,
+            refs: effectiveRefs ?? s.refs,
+          };
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) {
+        // B5-fix: seenTools dropped — B1's hasOpenStepForTool prevents duplicate
+        // spinners; each unmatched CITATION legitimately appends one done entry.
+        acc.steps.push({
+          key: `c-${tool}-${idx++}`,
+          type: tool,
+          label,
+          refs: effectiveRefs ?? undefined,
+          done: true,
+        });
+      }
+      flush();
+    };
+
+    const onStatus = (token: string) => {
+      // B34: legacy STATUS-only backends emit `.searching_<tool>` tokens; map
+      // them onto the same fresh-step push as v2 tool_start so a live spinner
+      // appears even on the pre-v2 status pipeline.
+      const LEGACY_SEARCHING: Record<string, Tool> = {
+        ".searching_library": "search_library",
+        ".searching_web": "search_web",
+        ".searching_academic": "search_academic",
+      };
+      const legacyTool = LEGACY_SEARCHING[token];
+      if (legacyTool) {
+        if (hasOpenStepForTool(legacyTool)) return;
+        pushStep({
+          key: `s-${legacyTool}-${idx++}`,
+          type: legacyTool,
+          label: STARTING_TOOL_LABELS[legacyTool],
+          done: false,
+        });
+        return;
+      }
+      // B28: v2-pipeline-on / protocol-v2-off backends emit tool lifecycle as
+      // ❬STATUS❭tool_start:<name>❬/STATUS❭ instead of ❬TOOL❭ frames.
+      if (token.startsWith("tool_start:")) {
+        const tool = token.slice("tool_start:".length) as Tool;
+        if (
+          tool === "search_library" ||
+          tool === "search_web" ||
+          tool === "search_academic"
+        ) {
+          if (hasOpenStepForTool(tool)) return;
+          pushStep({
+            key: `s-${tool}-${idx++}`,
+            type: tool,
+            label: STARTING_TOOL_LABELS[tool],
+            done: false,
+          });
+        }
+        return;
+      }
+      if (token.startsWith("tool_end:")) {
+        const tool = token.slice("tool_end:".length);
+        for (let i = acc.steps.length - 1; i >= 0; i--) {
+          const s = acc.steps[i];
+          if (s.type === tool && !s.done) {
+            // B33: replace identity so StepRow re-renders into done state.
+            acc.steps[i] = { ...s, done: true };
+            flush();
+            break;
+          }
+        }
+        return;
+      }
+      if (token === ".generating_response" && !acc.endTs) {
+        acc.endTs = Date.now();
+        acc.timeTaken = acc.endTs - acc.startTs;
+        // B33: object-replacement sweep — preserve key, force re-render.
+        acc.steps = acc.steps.map((s) => (s.done ? s : { ...s, done: true }));
+        // B24: only push "Verified sources" when at least one citation arrived.
+        const hasAnyRefs = acc.steps.some(
+          (s) => (s.refs?.data?.length ?? 0) > 0,
+        );
+        if (hasAnyRefs) {
+          pushStep({
+            key: `v-${idx++}`,
+            type: "verified",
+            label: "Verified sources",
+            done: true,
+          });
+        }
+        pushStep({
+          key: `g-${idx++}`,
+          type: "generating",
+          label: "Generating answer...",
+          done: false,
+        });
+      }
+    };
+
+    // B4-fix: when answer chunks start arriving, mark any open "generating"
+    // step done so the spinner stops even if backend never sends DONE.
+    const onAnswerChunk = () => {
+      let mutated = false;
+      acc.steps = acc.steps.map((s) => {
+        if (s.type === "generating" && !s.done) {
+          mutated = true;
+          return { ...s, done: true, label: "Generated answer" };
+        }
+        return s;
+      });
+      if (mutated) flush();
+    };
+
+    const finalize = () => {
+      // B25: drop the "Generating answer..." step entirely once generation ends.
+      acc.steps = acc.steps.filter((s) => s.type !== "generating");
+      if (!acc.endTs) {
+        acc.endTs = Date.now();
+        acc.timeTaken = acc.endTs - acc.startTs;
+      }
+      flush();
+    };
+
+    return { onReason, onTool, onStatus, onCitation, onAnswerChunk, finalize };
+  }
+  */
 
   async function handleSendMessage(text: string) {
     if (!text.trim() || isLoading) return;
@@ -253,13 +713,29 @@
     messages = [...messages, assistantMessage];
 
     try {
-      const effectiveMode: SearchMode = selectedMode;
-      const fileAttachments =
-        effectiveMode === "files" ? await getContextFromFiles() : [];
+      const effectiveTools: Tool[] = modesToTools(selectedTools);
+      // B19: read connected notes inline from the vault each query.
+      const attachments = await getContextFromFiles();
       const customContext = getCustomInstructionContext();
-      const streamOptions = !isAuthenticated
+      const recorder = makeStageRecorder(assistantMessage);
+      const baseOpts = !isAuthenticated
         ? { endpoint: "/public/visitor/completion", skipAuth: true }
-        : undefined;
+        : {};
+      const streamOptions = {
+        ...baseOpts,
+        onReason: recorder.onReason,
+        onTool: recorder.onTool,
+        onStatus: (token: string) => {
+          recorder.onStatus(token);
+        },
+        onSuggestQuestions: (qs: string[]) => {
+          const currentMsg = messages.find((m) => m.id === assistantMessage.id);
+          upsertMessage({
+            ...(currentMsg ?? assistantMessage),
+            suggestQuestions: qs,
+          });
+        },
+      };
 
       await plugin.api.streamMessage(
         text,
@@ -267,47 +743,72 @@
         historyBefore,
         (chunk: string) => {
           currentResponse += chunk;
+          const liveMsg = messages.find((m) => m.id === assistantMessage.id);
           upsertMessage({
-            ...assistantMessage,
+            ...(liveMsg ?? assistantMessage),
             content: currentResponse,
           });
         },
         () => {
+          // B22: snapshot streamed content BEFORE clearing currentResponse.
+          const finalContent = currentResponse;
           isLoading = false;
           currentResponse = "";
-          // After completion, ensure reference files are in sources if no API sources
+          recorder.finalize();
           const currentMsg = messages.find((m) => m.id === assistantMessage.id);
-          if (
-            currentMsg &&
-            (!currentMsg.sources || currentMsg.sources.length === 0)
-          ) {
-            const fileSources = getContextFilesAsSources();
-            if (fileSources.length > 0) {
-              upsertMessage({
-                ...assistantMessage,
-                content: currentResponse,
-                sources: fileSources,
-              });
-            }
-          }
-        },
-        (error: string) => handleApiError(error, assistantMessage),
-        customContext,
-        effectiveMode,
-        (sources: SourceNode[]) => {
-          // Merge API sources with context file sources
-          const fileSources = getContextFilesAsSources();
-          const allSources = [...sources, ...fileSources];
+          const fileSources =
+            !currentMsg?.sources || currentMsg.sources.length === 0
+              ? getConnectedNotesAsSources()
+              : [];
           upsertMessage({
-            ...assistantMessage,
+            ...(currentMsg ?? assistantMessage),
+            content: finalContent,
+            sources:
+              fileSources.length > 0
+                ? fileSources
+                : (currentMsg?.sources ?? []),
+            reasoning: recorder.snapshot(),
+            suggestQuestions: currentMsg?.suggestQuestions,
+          });
+          clearLiveStage(assistantMessage.id);
+          if (saveTimeout) clearTimeout(saveTimeout);
+          plugin.settings.chatHistory = messages;
+          void plugin.saveSettings();
+        },
+        (error: string) => {
+          clearLiveStage(assistantMessage.id);
+          handleApiError(error, assistantMessage);
+        },
+        customContext,
+        effectiveTools,
+        (payload) => {
+          // Tool-tagged citation (CITATION:<tool>) → stage event; bare CITATION → completion-only adoption (B3).
+          if (payload.tool) {
+            recorder.onCitationTool(payload.tool, payload.rawPayload);
+          }
+          // B1 fix: merge prior accumulated sources (from earlier CITATION frames) with
+          // incoming + connected notes, dedup by url|fileid|filename. Reading from
+          // messages[] avoids the outer-captured assistantMessage.sources=[] overwrite bug.
+          const currentMsg = messages.find((m) => m.id === assistantMessage.id);
+          // Append incoming nodes without dedup — backend citation [N] is a 1-based
+          // index into the flat concatenated nodes array across all frames in order.
+          // Deduping changes indices and breaks the mapping.
+          const prior = (currentMsg?.sources ?? []).filter(
+            (s) => s.filetype !== "reference",
+          );
+          const incoming = payload.sources ?? [];
+          const merged = [...prior, ...incoming];
+          upsertMessage({
+            ...(currentMsg ?? assistantMessage),
             content: currentResponse,
-            sources: allSources,
+            sources: merged,
           });
         },
-        fileAttachments,
+        attachments,
         streamOptions,
       );
     } catch (error) {
+      clearLiveStage(assistantMessage.id);
       console.error("[Logically] Error sending message:", error);
       upsertMessage({
         ...assistantMessage,
@@ -374,13 +875,28 @@
     messages = [...messages, assistantMessage];
 
     try {
-      const effectiveMode: SearchMode = selectedMode;
-      const fileAttachments =
-        effectiveMode === "files" ? await getContextFromFiles() : [];
+      const effectiveTools: Tool[] = modesToTools(selectedTools);
+      const attachments = await getContextFromFiles();
       const customContext = getCustomInstructionContext();
-      const streamOptions = !isAuthenticated
+      const recorder = makeStageRecorder(assistantMessage);
+      const baseOpts = !isAuthenticated
         ? { endpoint: "/public/visitor/completion", skipAuth: true }
-        : undefined;
+        : {};
+      const streamOptions = {
+        ...baseOpts,
+        onReason: recorder.onReason,
+        onTool: recorder.onTool,
+        onStatus: (token: string) => {
+          recorder.onStatus(token);
+        },
+        onSuggestQuestions: (qs: string[]) => {
+          const currentMsg = messages.find((m) => m.id === assistantMessage.id);
+          upsertMessage({
+            ...(currentMsg ?? assistantMessage),
+            suggestQuestions: qs,
+          });
+        },
+      };
 
       await plugin.api.streamMessage(
         userMessage.content,
@@ -388,47 +904,68 @@
         historyBefore,
         (chunk: string) => {
           currentResponse += chunk;
+          const liveMsg = messages.find((m) => m.id === assistantMessage.id);
           upsertMessage({
-            ...assistantMessage,
+            ...(liveMsg ?? assistantMessage),
             content: currentResponse,
           });
         },
         () => {
+          const finalContent = currentResponse;
           isLoading = false;
           currentResponse = "";
-          // After completion, ensure reference files are in sources if no API sources
+          recorder.finalize();
           const currentMsg = messages.find((m) => m.id === assistantMessage.id);
-          if (
-            currentMsg &&
-            (!currentMsg.sources || currentMsg.sources.length === 0)
-          ) {
-            const fileSources = getContextFilesAsSources();
-            if (fileSources.length > 0) {
-              upsertMessage({
-                ...assistantMessage,
-                content: currentResponse,
-                sources: fileSources,
-              });
-            }
-          }
-        },
-        (error: string) => handleApiError(error, assistantMessage),
-        customContext,
-        effectiveMode,
-        (sources: SourceNode[]) => {
-          // Merge API sources with context file sources
-          const fileSources = getContextFilesAsSources();
-          const allSources = [...sources, ...fileSources];
+          const fileSources =
+            !currentMsg?.sources || currentMsg.sources.length === 0
+              ? getConnectedNotesAsSources()
+              : [];
           upsertMessage({
-            ...assistantMessage,
+            ...(currentMsg ?? assistantMessage),
+            content: finalContent,
+            sources:
+              fileSources.length > 0
+                ? fileSources
+                : (currentMsg?.sources ?? []),
+            reasoning: recorder.snapshot(),
+            suggestQuestions: currentMsg?.suggestQuestions,
+          });
+          clearLiveStage(assistantMessage.id);
+          if (saveTimeout) clearTimeout(saveTimeout);
+          plugin.settings.chatHistory = messages;
+          void plugin.saveSettings();
+        },
+        (error: string) => {
+          clearLiveStage(assistantMessage.id);
+          handleApiError(error, assistantMessage);
+        },
+        customContext,
+        effectiveTools,
+        (payload) => {
+          if (payload.tool) {
+            recorder.onCitationTool(payload.tool, payload.rawPayload);
+          }
+          // B1 fix: same merge+dedup as handleSendMessage. See note above.
+          const currentMsg = messages.find((m) => m.id === assistantMessage.id);
+          // Append incoming nodes without dedup — backend citation [N] is a 1-based
+          // index into the flat concatenated nodes array across all frames in order.
+          // Deduping changes indices and breaks the mapping.
+          const prior = (currentMsg?.sources ?? []).filter(
+            (s) => s.filetype !== "reference",
+          );
+          const incoming = payload.sources ?? [];
+          const merged = [...prior, ...incoming];
+          upsertMessage({
+            ...(currentMsg ?? assistantMessage),
             content: currentResponse,
-            sources: allSources,
+            sources: merged,
           });
         },
-        fileAttachments,
+        attachments,
         streamOptions,
       );
     } catch (error) {
+      clearLiveStage(assistantMessage.id);
       console.error("[Logically] Error regenerating:", error);
       upsertMessage({
         ...assistantMessage,
@@ -522,6 +1059,15 @@
       .replace(curlyAny, replacer)
       .replace(squareAny, replacer);
 
+    // B3: bare [N] markers (new backend format). Negative lookahead skips markdown links [label](url).
+    // Gate on sources bounds so prose like [citation needed] isn't replaced.
+    result = result.replace(/\[(\d+)\](?!\()/g, (m, num) => {
+      const idx = Number.parseInt(num, 10) - 1;
+      if (!sources || idx < 0 || idx >= sources.length) return m;
+      usedCitations.add(idx);
+      return `[^${num}]`;
+    });
+
     // Generate footnote definitions for used citations
     if (usedCitations.size > 0 && sources && sources.length > 0) {
       const footnotes: string[] = [];
@@ -561,172 +1107,6 @@
     selectedModel = DEFAULT_SETTINGS.selectedModel;
   }
 
-  // Drag-and-drop handling (only active when mode is "files")
-  function resolveFilePath(raw: string): string | null {
-    if (!app) return null;
-    let target = raw.trim();
-
-    const wikiMatch = target.match(/\[\[([^\]|#]+)/);
-    if (wikiMatch?.[1]) target = wikiMatch[1];
-
-    const mdMatch = target.match(/\[[^\]]*\]\(([^)#]+)/);
-    if (mdMatch?.[1]) target = mdMatch[1];
-
-    if (target.startsWith("obsidian://")) {
-      try {
-        const url = new URL(target);
-        const path =
-          url.searchParams.get("file") || url.searchParams.get("path");
-        if (path) target = decodeURIComponent(path);
-      } catch {
-        /* ignore */
-      }
-    }
-
-    if (target.startsWith("app://")) {
-      try {
-        const url = new URL(target);
-        let path = decodeURIComponent(url.pathname);
-        path = path.replace(/^\//, "");
-        const parts = path.split("/");
-        if (parts.length > 1) {
-          target = parts.slice(1).join("/");
-        }
-      } catch {
-        /* ignore */
-      }
-    }
-
-    target = target.replace(/^\//, "");
-
-    const directFile = app.vault.getAbstractFileByPath(target);
-    if (directFile instanceof TFile && directFile.extension === "md") {
-      return directFile.path;
-    }
-
-    if (!target.endsWith(".md")) {
-      const withMd = app.vault.getAbstractFileByPath(target + ".md");
-      if (withMd instanceof TFile) {
-        return withMd.path;
-      }
-    }
-
-    const resolved = app.metadataCache.getFirstLinkpathDest(target, "");
-    if (resolved instanceof TFile && resolved.extension === "md") {
-      return resolved.path;
-    }
-
-    return null;
-  }
-
-  function handleDragOver(e: DragEvent) {
-    // Only allow drag when in files mode
-    if (selectedMode !== "files") return;
-    const dt = e.dataTransfer;
-    if (!dt) return;
-    e.preventDefault();
-    dt.dropEffect = "link";
-    isDraggingOver = true;
-  }
-
-  function handleDragLeave(e: DragEvent) {
-    const target = e.relatedTarget as Node | null;
-    const container = e.currentTarget as HTMLElement;
-    if (!target || !container.contains(target)) {
-      isDraggingOver = false;
-    }
-  }
-
-  function handleDrop(e: DragEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    isDraggingOver = false;
-
-    // Only handle drop when in files mode
-    if (selectedMode !== "files") return;
-
-    const dt = e.dataTransfer;
-    if (!dt) return;
-
-    const payloads: string[] = [];
-    const textPlain = dt.getData("text/plain");
-    if (textPlain) payloads.push(textPlain);
-
-    const textUri = dt.getData("text/uri-list");
-    if (textUri) payloads.push(textUri);
-
-    for (const type of dt.types) {
-      const data = dt.getData(type);
-      if (data && !payloads.includes(data)) {
-        payloads.push(data);
-      }
-    }
-
-    const allLines = payloads
-      .join("\n")
-      .split(/\r?\n/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-
-    const addedFiles: string[] = [];
-    const alreadyAddedFiles: string[] = [];
-    const unresolvedLines: string[] = [];
-    const skippedDueToLimit: string[] = [];
-
-    for (const line of allLines) {
-      const resolved = resolveFilePath(line);
-      if (!resolved) {
-        unresolvedLines.push(line);
-        continue;
-      }
-
-      if (contextFiles.includes(resolved) || addedFiles.includes(resolved)) {
-        alreadyAddedFiles.push(resolved);
-        continue;
-      }
-
-      if (contextFiles.length + addedFiles.length >= maxFiles) {
-        skippedDueToLimit.push(resolved);
-        continue;
-      }
-
-      addedFiles.push(resolved);
-    }
-
-    if (addedFiles.length > 0) {
-      contextFiles = [...contextFiles, ...addedFiles];
-      plugin.settings.contextFiles = contextFiles;
-      void plugin.saveSettings();
-      filesExpanded = true;
-      new Notice(`Added ${addedFiles.length} file(s) as context`);
-    }
-
-    if (alreadyAddedFiles.length > 0) {
-      const unique = Array.from(new Set(alreadyAddedFiles));
-      const names = unique.map((p) => p.split("/").pop() ?? p);
-      const maxShown = 4;
-      const shown = names.slice(0, maxShown);
-      const more = names.length - shown.length;
-      new Notice(
-        `${shown.join(", ")}${more > 0 ? ` and ${more} more` : ""} ${
-          names.length === 1 ? "was" : "were"
-        } already added`,
-      );
-    }
-
-    if (skippedDueToLimit.length > 0) {
-      new Notice(`Reached the ${maxFiles} file limit`);
-    }
-
-    if (
-      unresolvedLines.length > 0 &&
-      addedFiles.length === 0 &&
-      alreadyAddedFiles.length === 0
-    ) {
-      new Notice("Could not resolve dropped file(s)");
-    }
-  }
-
   function handleLogin() {
     // Flush visitor messages to settings before login overwrites
     plugin.settings.chatHistory = messages;
@@ -743,7 +1123,7 @@
     }
   }
 
-  function handleShowUpgrade(type: "advanced" | "reasoning") {
+  function handleShowUpgrade(type: "advanced" | "reasoning" | "quota") {
     upgradeModalType = type;
     showUpgradeModal = true;
   }
@@ -751,8 +1131,8 @@
   onMount(async () => {
     isAuthenticated = plugin.api.isAuthenticated();
     selectedModel = plugin.settings.selectedModel;
-    selectedMode = plugin.settings.searchMode ?? "files";
-    contextFiles = plugin.settings.contextFiles ?? [];
+    selectedTools = plugin.settings.selectedTools ?? ["files"];
+    connectedNotes = plugin.settings.connectedNotes ?? [];
     messages = plugin.settings.chatHistory ?? [];
     userPrivileges = plugin.settings.userPrivileges ?? [];
     userName = plugin.settings.userName ?? "";
@@ -761,14 +1141,17 @@
     availableModels = await plugin.api.getModels();
 
     // Fetch user name if authenticated but name not set
-    if (isAuthenticated && !userName) {
+    if (isAuthenticated) {
       const userResult = await plugin.api.getCurrentUser();
       if (userResult.success && userResult.data) {
         const user = userResult.data;
-        const nameParts = [user.first, user.last].filter(Boolean);
-        userName = nameParts.join(" ") || plugin.settings.userEmail;
-        plugin.settings.userName = userName;
-        await plugin.saveSettings();
+        if (user.personal_library) personalLibraryId = user.personal_library;
+        if (!userName) {
+          const nameParts = [user.first, user.last].filter(Boolean);
+          userName = nameParts.join(" ") || plugin.settings.userEmail;
+          plugin.settings.userName = userName;
+          await plugin.saveSettings();
+        }
       }
     }
   });
@@ -782,10 +1165,6 @@
 
 <div
   class="logically-root"
-  class:drag-active={isDraggingOver}
-  on:dragover={handleDragOver}
-  on:dragleave={handleDragLeave}
-  on:drop={handleDrop}
   role="application"
   aria-label="Logically AI research assistant"
 >
@@ -872,71 +1251,40 @@
       </div>
     </header>
 
-    {#if filesExpanded && selectedMode === "files"}
-      <FilePicker
-        bind:this={filePickerRef}
-        {app}
-        selectedFiles={contextFiles}
-        {maxFiles}
-        on:change={(e) => handleFilesChange(e.detail)}
-      />
-    {/if}
-
-    {#if isDraggingOver && selectedMode === "files"}
-      <div class="drop-overlay">
-        <div class="drop-overlay-content">
-          <svg
-            width="32"
-            height="32"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
-            ></path>
-            <polyline points="14 2 14 8 20 8"></polyline>
-            <line x1="12" y1="18" x2="12" y2="12"></line>
-            <line x1="9" y1="15" x2="12" y2="12"></line>
-            <line x1="15" y1="15" x2="12" y2="12"></line>
-          </svg>
-          <span>Drop files to add as context</span>
-          <span class="drop-hint">{contextFiles.length}/{maxFiles} files</span>
-        </div>
-      </div>
-    {/if}
-
     <div class="ra-messages">
       <MessageList
         {messages}
         {isLoading}
         {currentResponse}
         {app}
-        searchMode={selectedMode}
+        searchMode={selectedTools[0] ?? "files"}
         {userName}
         models={availableModels}
+        {liveStage}
+        {liveGeneratingStarted}
+        {liveAssistantId}
         on:insertToNote={(e) => handleInsertToNote(e.detail)}
         on:deleteFromIndex={(e) => handleDeleteFromIndex(e.detail)}
         on:regenerate={(e) => handleRegenerate(e.detail)}
-        on:openFilePicker={handleOpenFilePicker}
+        on:openConnectNotes={handleOpenConnectNotes}
+        on:selectFollowUp={(e) => handleSendMessage(e.detail)}
       />
     </div>
 
     <ChatInput
       on:send={(e) => handleSendMessage(e.detail)}
       on:modelChange={(e) => handleModelChange(e.detail)}
-      on:modeChange={(e) => handleModeChange(e.detail)}
+      on:toolsChange={(e) => handleToolsChange(e.detail)}
       on:showUpgrade={(e) => handleShowUpgrade(e.detail)}
-      on:toggleFiles={handleToggleFiles}
+      on:openConnectNotes={handleOpenConnectNotes}
       on:requestLogin={() => (loginPromptMode = "modal")}
       disabled={isLoading}
       selectedModel={isAuthenticated
         ? selectedModel
         : DEFAULT_SETTINGS.selectedModel}
-      {selectedMode}
+      {selectedTools}
       userPrivileges={isAuthenticated ? userPrivileges : []}
-      {filesExpanded}
-      fileCount={contextFiles.length}
+      fileCount={connectedNotes.length}
       models={availableModels}
       {isAuthenticated}
     />
@@ -947,6 +1295,15 @@
   bind:isOpen={showUpgradeModal}
   modelType={upgradeModalType}
   on:close={() => (showUpgradeModal = false)}
+/>
+
+<ConnectNotesModal
+  {app}
+  isOpen={connectModalOpen}
+  isSyncing={connectSyncing}
+  initialSelectedPaths={connectedNotes.map((n) => n.vaultPath)}
+  on:submit={(e) => handleConnectSubmit(e.detail)}
+  on:close={() => (connectModalOpen = false)}
 />
 
 <SettingsPanel
@@ -1038,42 +1395,6 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
-  }
-
-  /* Drag-and-drop overlay */
-  .logically-root.drag-active {
-    position: relative;
-  }
-
-  .drop-overlay {
-    position: absolute;
-    inset: 0;
-    background: rgba(25, 128, 230, 0.1);
-    border: 2px dashed #1980e6;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 100;
-    pointer-events: none;
-  }
-
-  .drop-overlay-content {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    color: #1980e6;
-    font-weight: 500;
-  }
-
-  .drop-overlay-content svg {
-    opacity: 0.8;
-  }
-
-  .drop-hint {
-    font-size: 12px;
-    opacity: 0.7;
   }
 
   .ra-visitor-banner {

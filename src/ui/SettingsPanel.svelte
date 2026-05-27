@@ -325,7 +325,11 @@
     font-family: inherit;
     font-size: 12px;
     color: var(--text-muted);
-    transition: all 0.15s ease;
+    transition:
+      background var(--ra-transition),
+      color var(--ra-transition),
+      border-color var(--ra-transition),
+      filter var(--ra-transition);
   }
 
   .ra-logout-btn:hover {
@@ -368,7 +372,11 @@
     font-size: 13px;
     font-weight: 500;
     color: var(--text-on-accent);
-    transition: all 0.15s ease;
+    transition:
+      background var(--ra-transition),
+      color var(--ra-transition),
+      border-color var(--ra-transition),
+      filter var(--ra-transition);
   }
 
   .ra-save-btn:hover:not(:disabled) {
