@@ -389,17 +389,18 @@ export class LogicallyApi {
           : "";
 
     // Send custom instructions directly - backend prepends "Additional instruction:"
+    // Custom instructions only — notes are no longer concatenated here.
     const notes = (contextNotes ?? "").trim();
     if (notes) {
       base.system = notes;
     }
-    // B19: inline attached vault notes into the system prompt as primary context.
-    if (attachments && attachments.length > 0) {
-      const ctx = attachments
-        .map((a) => `## ${a.path}\n${a.content}`)
-        .join("\n\n---\n\n");
-      base.system = `${notes ? notes + "\n\n---\n\n" : ""}# Attached vault notes (use as primary context)\n\n${ctx}`;
-    }
+    // V2: send vault notes as a structured field, NOT inlined into base.system.
+    // Backend compressVaultNotes() middleware ranks + summarizes and injects
+    // the digest into the system prompt as primary context.
+    const vault_notes =
+      attachments && attachments.length > 0
+        ? attachments.map((a) => ({ path: a.path, content: a.content }))
+        : undefined;
     const userMsg = {
       role: "user" as const,
       content: message,
@@ -412,7 +413,7 @@ export class LogicallyApi {
       userMsg,
     ];
     return {
-      session: { ...base, history },
+      session: { ...base, history, ...(vault_notes ? { vault_notes } : {}) },
       externalData: { location: "research_assistant" },
       heartbeat: 5000,
     };

@@ -378,6 +378,13 @@
         a.appendChild(chip);
         return a;
       }
+      // Obsidian vault notes: open internally by FULL vault path (fileid), not as
+      // a url (a relative path fails isSafeUrl and would dead-end the click).
+      if (src.filetype === "obsidian_vault" && src.fileid) {
+        chip.addEventListener("click", () => {
+          if (app) app.workspace.openLinkText(src.fileid as string, "", false);
+        });
+      }
       return chip;
     }
 

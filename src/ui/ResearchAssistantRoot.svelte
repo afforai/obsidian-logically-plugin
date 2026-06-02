@@ -797,7 +797,11 @@
             (s) => s.filetype !== "reference",
           );
           const incoming = payload.sources ?? [];
-          const merged = [...prior, ...incoming];
+          // Tool-tagged CITATION:<tool> frames accumulate (side-panel discovery).
+          // The bare CITATION frame is the authoritative full-context node list in
+          // LLM context order, so REPLACE — keeping the LLM's 1-based citation
+          // indices aligned with sources[]. Mirrors web update_chat.ts (nodes=nodes).
+          const merged = payload.tool ? [...prior, ...incoming] : incoming;
           upsertMessage({
             ...(currentMsg ?? assistantMessage),
             content: currentResponse,
@@ -954,7 +958,11 @@
             (s) => s.filetype !== "reference",
           );
           const incoming = payload.sources ?? [];
-          const merged = [...prior, ...incoming];
+          // Tool-tagged CITATION:<tool> frames accumulate (side-panel discovery).
+          // The bare CITATION frame is the authoritative full-context node list in
+          // LLM context order, so REPLACE — keeping the LLM's 1-based citation
+          // indices aligned with sources[]. Mirrors web update_chat.ts (nodes=nodes).
+          const merged = payload.tool ? [...prior, ...incoming] : incoming;
           upsertMessage({
             ...(currentMsg ?? assistantMessage),
             content: currentResponse,
@@ -1084,6 +1092,14 @@
         if (source.filetype === "reference" && source.fileid) {
           // Obsidian internal link
           footnotes.push(`[^${num}]: [[${source.fileid}]]`);
+        } else if (source.filetype === "obsidian_vault") {
+          // Obsidian vault note: wiki-link by FULL vault path (fileid) so two
+          // notes sharing a basename (e.g. "Untitled") don't collide and open a
+          // blank/wrong note. [[full/path.md]] resolves the same file that the
+          // chip click opens via workspace.openLinkText(fileid).
+          const vaultPath =
+            source.fileid || source.url || source.filename || "Unknown";
+          footnotes.push(`[^${num}]: [[${vaultPath}]]`);
         } else if (source.pdfUrl || source.url) {
           const url = source.pdfUrl || source.url;
           const title = source.filename || "Source";
